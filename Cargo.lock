@@ -1818,13 +1818,13 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
 name = "pinocchio"
-version = "0.8.3"
-source = "git+https://github.com/anza-xyz/pinocchio.git?branch=febo%2Fcpi-tweaks#29da007983dfd3ce46a873f0da7a0cfea2f1fbd8"
+version = "0.8.4"
+source = "git+https://github.com/rustopian/pinocchio.git?branch=rustopian%2Fslot-hashes-sysvar#f7abda7729e25f3f3ff804efb46aeda7462ae7f2"
 
 [[package]]
 name = "pinocchio-pubkey"
 version = "0.2.4"
-source = "git+https://github.com/anza-xyz/pinocchio.git?branch=febo%2Fcpi-tweaks#29da007983dfd3ce46a873f0da7a0cfea2f1fbd8"
+source = "git+https://github.com/rustopian/pinocchio.git?branch=rustopian%2Fslot-hashes-sysvar#f7abda7729e25f3f3ff804efb46aeda7462ae7f2"
 dependencies = [
  "five8_const",
  "pinocchio",

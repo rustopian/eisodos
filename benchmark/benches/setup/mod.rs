@@ -21,8 +21,8 @@ use solana_program::slot_hashes::SlotHash;
 #[derive(Clone, Copy, Debug)]
 enum DecrementStrategy {
     Strictly1,
-    Average1_05, // Avg decrement: (19*1 + 1*2)/20 = 1.05
-    Average2,    // Avg decrement: (1 + 3)/2 = 2
+    Average1_05,
+    Average2,
 }
 
 pub const BASE_LAMPORTS: u64 = 2_000_000_000u64;
@@ -32,10 +32,8 @@ const BENCH_SLOT_HASH_START_SLOT: u64 = 900;
 // Simple deterministic PRNG for varied decrements
 // Using a basic Lehmer / MINSTD generator approach
 fn simple_prng(seed: u64) -> u64 {
-    // Parameters (chosen somewhat arbitrarily, ensure non-zero output often)
     const A: u64 = 16807; // Multiplier
     const M: u64 = 2147483647; // Modulus (2^31 - 1)
-    // Ensure seed is non-zero for this specific PRNG
     let initial_state = if seed == 0 { 1 } else { seed };
     (A.wrapping_mul(initial_state)) % M
 }
@@ -99,21 +97,17 @@ fn generate_mock_slot_hashes_data(strategy: DecrementStrategy) -> Vec<(u64, [u8;
     let mut current_slot = BENCH_SLOT_HASH_START_SLOT;
 
     for i in 0..NUM_BENCH_SLOT_HASH_ENTRIES {
-        // Generate a predictable, unique hash based on index
         let hash_byte = (i % 256) as u8;
         let hash = [hash_byte; 32];
         entries.push((current_slot, hash));
 
-        // Determine next slot based on strategy
         let random_val = simple_prng(i as u64);
         let decrement = match strategy {
             DecrementStrategy::Strictly1 => 1,
             DecrementStrategy::Average1_05 => {
-                // Use PRNG to decide when to decrement by 2 (approx 1/20 chance)
                 if random_val % 20 == 0 { 2 } else { 1 }
             }
             DecrementStrategy::Average2 => {
-                // Use PRNG to choose between 1 and 3 (approx 50/50 chance)
                 if random_val % 2 == 0 { 1 } else { 3 }
             }
         };

@@ -14,7 +14,6 @@ pub fn run(program_id: &Pubkey, name: &'static str) {
         .must_pass(true)
         .out_dir("../target/benches");
 
-    // Store all generated benchmark data (ID, Instruction, Accounts) to manage lifetimes
     let mut benchmark_data: Vec<(String, Instruction, Vec<(Pubkey, Account)>)> = Vec::new();
 
     // Ping
@@ -77,11 +76,9 @@ pub fn run(program_id: &Pubkey, name: &'static str) {
         }
     }
 
-    // --- Add Benchmarks using pre-generated data ---
     for (id, instruction, accounts) in &benchmark_data {
         bencher = bencher.bench((id.as_str(), instruction, accounts));
     }
 
-    // Run the benchmarks.
     bencher.execute();
 }

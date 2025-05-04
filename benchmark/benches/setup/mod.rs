@@ -18,7 +18,7 @@ use solana_program::hash::Hash;
 use solana_program::slot_hashes::SlotHash;
 
 // Enum to control slot decrement behavior in mock data generation
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum DecrementStrategy {
     Strictly1,
     Average1_05, // Avg decrement: (19*1 + 1*2)/20 = 1.05
@@ -49,6 +49,7 @@ pub fn setup(program_id: &Pubkey, name: &'static str) -> Mollusk {
 }
 
 /// Instructions on the program to be executed.
+#[derive(Clone, Copy, Debug)]
 pub enum ProgramInstruction {
     Ping,
     Log,
@@ -227,7 +228,11 @@ fn generate_transfer(program_id: Pubkey) -> (Instruction, Vec<(Pubkey, Account)>
 }
 
 /// Generates the instruction data and accounts for the SlotHashes instructions (SDK version).
-fn generate_sdk_slot_hashes_ix(program_id: Pubkey, ix_type: ProgramInstruction) -> (Instruction, Vec<(Pubkey, Account)>) {
+fn generate_sdk_slot_hashes_ix(
+    program_id: Pubkey, 
+    ix_type: ProgramInstruction, 
+    strategy: DecrementStrategy
+) -> (Instruction, Vec<(Pubkey, Account)>) {
     // Use the well-known ID directly to avoid sdk dependency
     let sysvar_id = solana_pubkey::Pubkey::new_from_array([
         6, 167, 213, 23, 25, 47, 10, 175, 198, 242, 101, 227, 251, 119, 204, 122, 
@@ -235,15 +240,16 @@ fn generate_sdk_slot_hashes_ix(program_id: Pubkey, ix_type: ProgramInstruction) 
     ]);
 
     // Generate realistic mock SlotHashes data
-    let mock_entries_raw = generate_mock_slot_hashes_data(DecrementStrategy::Average1_05);
+    let mock_entries_raw = generate_mock_slot_hashes_data(strategy);
 
-    // Manually serialize mock data according to layout: u32 len + [(u64 slot, [u8; 32] hash)]
-    let num_entries = mock_entries_raw.len() as u32;
-    let mut data = Vec::with_capacity(4 + mock_entries_raw.len() * (8 + 32)); // 4 bytes for u32 len
-    data.extend_from_slice(&num_entries.to_le_bytes());
-    for (slot, hash_bytes) in &mock_entries_raw {
+    // Manually serialize mock data according to layout: u64 len + [(u64 slot, [u8; 32] hash)]
+    // (Using u64 len for consistency, as prefix didn't cause the UnsupportedSysvar error)
+    let num_entries = mock_entries_raw.len() as u64;
+    let mut data = Vec::with_capacity(8 + mock_entries_raw.len() * (8 + 32)); // Use 8 for u64 len
+    data.extend_from_slice(&(num_entries as u64).to_le_bytes());
+    for (slot, hash) in &mock_entries_raw {
         data.extend_from_slice(&slot.to_le_bytes());
-        data.extend_from_slice(hash_bytes);
+        data.extend_from_slice(hash);
     }
 
     // Create the sysvar account owned by the Sysvar Program ID
@@ -266,7 +272,11 @@ fn generate_sdk_slot_hashes_ix(program_id: Pubkey, ix_type: ProgramInstruction) 
 }
 
 /// Generates the instruction data and accounts for the SlotHashes instructions (Pinocchio version).
-fn generate_pinocchio_slot_hashes_ix(program_id: Pubkey, ix_type: ProgramInstruction) -> (Instruction, Vec<(Pubkey, Account)>) {
+fn generate_pinocchio_slot_hashes_ix(
+    program_id: Pubkey, 
+    ix_type: ProgramInstruction, 
+    strategy: DecrementStrategy
+) -> (Instruction, Vec<(Pubkey, Account)>) {
     // Use the well-known ID directly to avoid sdk dependency
     let sysvar_id = solana_pubkey::Pubkey::new_from_array([
         6, 167, 213, 23, 25, 47, 10, 175, 198, 242, 101, 227, 251, 119, 204, 122, 
@@ -274,7 +284,7 @@ fn generate_pinocchio_slot_hashes_ix(program_id: Pubkey, ix_type: ProgramInstruc
     ]);
 
     // Generate realistic mock SlotHashes data
-    let mock_entries = generate_mock_slot_hashes_data(DecrementStrategy::Average1_05);
+    let mock_entries = generate_mock_slot_hashes_data(strategy);
 
     let num_entries = mock_entries.len() as u64;
     let mut data = Vec::with_capacity(8 + mock_entries.len() * (8 + 32)); // Use 8 for u64 len

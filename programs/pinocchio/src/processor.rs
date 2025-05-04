@@ -11,7 +11,6 @@ pub fn process_ping() -> ProgramResult {
 
 #[inline(always)]
 pub fn process_log() -> ProgramResult {
-    msg!("Instruction: Log");
     Ok(())
 }
 

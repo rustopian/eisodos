@@ -1,6 +1,5 @@
 use solana_account_info::AccountInfo;
 use solana_cpi::invoke;
-use solana_msg::msg;
 use solana_program_error::{ProgramError, ProgramResult};
 use solana_program::sysvar::{self, slot_hashes as solana_slot_hashes};
 
@@ -11,7 +10,6 @@ pub fn process_ping() -> ProgramResult {
 
 #[inline(always)]
 pub fn process_log() -> ProgramResult {
-    msg!("Instruction: Log");
     Ok(())
 }
 

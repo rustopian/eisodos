@@ -6,6 +6,7 @@ use mollusk_svm_bencher::MolluskComputeUnitBencher;
 use solana_account::Account;
 use solana_instruction::Instruction;
 use solana_pubkey::Pubkey;
+use super::DecrementStrategy;
 
 pub fn run(program_id: &Pubkey, name: &'static str) {
     let mollusk = setup(program_id, name);
@@ -46,12 +47,20 @@ pub fn run(program_id: &Pubkey, name: &'static str) {
     let (instruction, accounts) = generate_transfer(*program_id);
     benchmark_data.push((format!("{}: Transfer", name), instruction, accounts));
 
-    // SlotHashes Benchmarks
-    let generate_fn = if name == "eisodos_pinocchio" {
-        generate_pinocchio_slot_hashes_ix
-    } else {
-        generate_sdk_slot_hashes_ix
-    };
+    // --- Generate data for SlotHashes benchmarks with different strategies ---
+    let generate_fn: fn(Pubkey, ProgramInstruction, DecrementStrategy) -> (Instruction, Vec<(Pubkey, Account)>) = 
+        if name == "eisodos_pinocchio" {
+            generate_pinocchio_slot_hashes_ix
+        } else {
+            generate_sdk_slot_hashes_ix
+        };
+
+    let strategies = [
+        (DecrementStrategy::Strictly1, "Strictly1"),
+        (DecrementStrategy::Average1_05, "Avg1.05"),
+        (DecrementStrategy::Average2, "Avg2"),
+    ];
+
     let slot_hash_instructions_and_names = [
         (ProgramInstruction::SlotHashesGetEntry, "SlotHashesGetEntry"),
         (ProgramInstruction::SlotHashesGetHashInterpolated, "SlotHashesGetHashInterpolated"),
@@ -59,9 +68,13 @@ pub fn run(program_id: &Pubkey, name: &'static str) {
         (ProgramInstruction::SlotHashesGetHashMidpoint, "SlotHashesGetHashMidpoint"),
         (ProgramInstruction::SlotHashesPositionMidpoint, "SlotHashesPositionMidpoint"),
     ];
-    for (ix_type, base_name) in slot_hash_instructions_and_names {
-        let (instruction, accounts) = generate_fn(*program_id, ix_type);
-        benchmark_data.push((format!("{}: {}", name, base_name), instruction, accounts));
+
+    for (strategy, strategy_name) in strategies {
+        for &(ref ix_type, base_name) in &slot_hash_instructions_and_names {
+            let (instruction, accounts) = generate_fn(*program_id, *ix_type, strategy);
+            let bench_id = format!("{}: {} ({})", name, base_name, strategy_name);
+            benchmark_data.push((bench_id, instruction, accounts));
+        }
     }
 
     // --- Add Benchmarks using pre-generated data ---

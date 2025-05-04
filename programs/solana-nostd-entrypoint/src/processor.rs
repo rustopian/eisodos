@@ -2,6 +2,8 @@ use {
     crate::cpi::{create_account_unchecked, transfer_unchecked},
     solana_nostd_entrypoint::NoStdAccountInfo,
     solana_program::{entrypoint::ProgramResult, msg, program_error::ProgramError},
+    solana_program::sysvar::{slot_hashes as solana_slot_hashes},
+    // borsh::de::BorshDeserialize, // Removed as unused (code using it is commented out)
 };
 
 #[inline(always)]
@@ -40,4 +42,37 @@ pub fn process_transfer(accounts: &[NoStdAccountInfo]) -> ProgramResult {
     };
 
     unsafe { transfer_unchecked(from, to, 1_000_000_000) }
+}
+
+// Solana SDK SlotHashes Sysvar Processors
+
+#[inline(always)]
+pub fn process_slot_hashes_get_entry(accounts: &[NoStdAccountInfo]) -> ProgramResult {
+    let _slot_hashes_account = accounts.get(0).filter(|acc| acc.key() == &solana_slot_hashes::ID).ok_or(ProgramError::InvalidArgument)?;
+
+    Ok(())
+}
+
+#[inline(always)]
+pub fn process_slot_hashes_get_hash_interpolated(accounts: &[NoStdAccountInfo]) -> ProgramResult {
+    let _slot_hashes_account = accounts.get(0).filter(|acc| acc.key() == &solana_slot_hashes::ID).ok_or(ProgramError::InvalidArgument)?;
+
+    Ok(())
+}
+
+#[inline(always)]
+pub fn process_slot_hashes_position_interpolated(accounts: &[NoStdAccountInfo]) -> ProgramResult {
+    let _slot_hashes_account = accounts.get(0).filter(|acc| acc.key() == &solana_slot_hashes::ID).ok_or(ProgramError::InvalidArgument)?;
+
+    Ok(())
+}
+
+#[inline(always)]
+pub fn process_slot_hashes_get_hash_midpoint(accounts: &[NoStdAccountInfo]) -> ProgramResult {
+    process_slot_hashes_get_hash_interpolated(accounts)
+}
+
+#[inline(always)]
+pub fn process_slot_hashes_position_midpoint(accounts: &[NoStdAccountInfo]) -> ProgramResult {
+    process_slot_hashes_position_interpolated(accounts)
 }

@@ -1,7 +1,9 @@
 use super::{
     generate_account, generate_create_account, generate_transfer, instruction_data, setup,
+    generate_sdk_slot_hashes_ix, generate_pinocchio_slot_hashes_ix, ProgramInstruction,
 };
 use mollusk_svm_bencher::MolluskComputeUnitBencher;
+use solana_account::Account;
 use solana_instruction::Instruction;
 use solana_pubkey::Pubkey;
 
@@ -11,70 +13,62 @@ pub fn run(program_id: &Pubkey, name: &'static str) {
         .must_pass(true)
         .out_dir("../target/benches");
 
-    // Ping
+    // Store all generated benchmark data (ID, Instruction, Accounts) to manage lifetimes
+    let mut benchmark_data: Vec<(String, Instruction, Vec<(Pubkey, Account)>)> = Vec::new();
 
+    // Ping
     let instruction = Instruction {
         program_id: *program_id,
         accounts: vec![],
-        data: instruction_data(crate::ProgramInstruction::Ping),
+        data: instruction_data(ProgramInstruction::Ping),
     };
-    bencher = bencher.bench(("Ping", &instruction, &[]));
+    benchmark_data.push((format!("{}: Ping", name), instruction, Vec::new()));
 
     // Log
-
     let instruction = Instruction {
         program_id: *program_id,
         accounts: vec![],
-        data: instruction_data(crate::ProgramInstruction::Log),
+        data: instruction_data(ProgramInstruction::Log),
     };
-    bencher = bencher.bench(("Log", &instruction, &[]));
+    benchmark_data.push((format!("{}: Log", name), instruction, Vec::new()));
 
-    // Account 1
-
-    let (instruction, accounts) = generate_account(*program_id, 1);
-    bencher = bencher.bench(("Account (1)", &instruction, &accounts));
-
-    // Account 3
-
-    let (instruction, accounts) = generate_account(*program_id, 3);
-    bencher = bencher.bench(("Account (3)", &instruction, &accounts));
-
-    // Account 5
-
-    let (instruction, accounts) = generate_account(*program_id, 5);
-    bencher = bencher.bench(("Account (5)", &instruction, &accounts));
-
-    // Account 10
-
-    let (instruction, accounts) = generate_account(*program_id, 10);
-    bencher = bencher.bench(("Account (10)", &instruction, &accounts));
-
-    // Account 20
-
-    let (instruction, accounts) = generate_account(*program_id, 20);
-    bencher = bencher.bench(("Account (20)", &instruction, &accounts));
-
-    // Account 32
-
-    let (instruction, accounts) = generate_account(*program_id, 32);
-    bencher = bencher.bench(("Account (32)", &instruction, &accounts));
-
-    // Account 64
-
-    let (instruction, accounts) = generate_account(*program_id, 64);
-    bencher = bencher.bench(("Account (64)", &instruction, &accounts));
+    // Account Benchmarks
+    for &num_accounts in &[1u64, 3, 5, 10, 20, 32, 64] {
+        let (instruction, accounts) = generate_account(*program_id, num_accounts);
+        benchmark_data.push((format!("{}: Account ({})", name, num_accounts), instruction, accounts));
+    }
 
     // CreateAccount
-
     let (instruction, accounts) = generate_create_account(*program_id);
-    bencher = bencher.bench(("CreateAccount", &instruction, &accounts));
+    benchmark_data.push((format!("{}: CreateAccount", name), instruction, accounts));
 
     // Transfer
-
     let (instruction, accounts) = generate_transfer(*program_id);
-    bencher = bencher.bench(("Transfer", &instruction, &accounts));
+    benchmark_data.push((format!("{}: Transfer", name), instruction, accounts));
+
+    // SlotHashes Benchmarks
+    let generate_fn = if name == "eisodos_pinocchio" {
+        generate_pinocchio_slot_hashes_ix
+    } else {
+        generate_sdk_slot_hashes_ix
+    };
+    let slot_hash_instructions_and_names = [
+        (ProgramInstruction::SlotHashesGetEntry, "SlotHashesGetEntry"),
+        (ProgramInstruction::SlotHashesGetHashInterpolated, "SlotHashesGetHashInterpolated"),
+        (ProgramInstruction::SlotHashesPositionInterpolated, "SlotHashesPositionInterpolated"),
+        (ProgramInstruction::SlotHashesGetHashMidpoint, "SlotHashesGetHashMidpoint"),
+        (ProgramInstruction::SlotHashesPositionMidpoint, "SlotHashesPositionMidpoint"),
+    ];
+    for (ix_type, base_name) in slot_hash_instructions_and_names {
+        let (instruction, accounts) = generate_fn(*program_id, ix_type);
+        benchmark_data.push((format!("{}: {}", name, base_name), instruction, accounts));
+    }
+
+    // --- Add Benchmarks using pre-generated data ---
+    for (id, instruction, accounts) in &benchmark_data {
+        bencher = bencher.bench((id.as_str(), instruction, accounts));
+    }
 
     // Run the benchmarks.
-
     bencher.execute();
 }

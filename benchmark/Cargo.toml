@@ -1,5 +1,6 @@
 [package]
 name = "eisodos"
+edition = "2021"
 publish = false
 
 [[bin]]
@@ -7,6 +8,7 @@ name = "coyote"
 path = "src/main.rs"
 
 [dev-dependencies]
+# borsh = "1.5.7"
 eisodos-pinocchio = { path="../programs/pinocchio" }
 eisodos-solana-nostd-entrypoint = { path="../programs/solana-nostd-entrypoint" }
 eisodos-solana-program = { path="../programs/solana-program" }
@@ -15,6 +17,8 @@ mollusk-svm-bencher = "0.1.4"
 solana-account = "2.2"
 solana-instruction = "2.2"
 solana-logger = "2.2"
+solana-program = "2.2"
 solana-pubkey = "2.2"
+solana-sdk = "2.2"
 solana-system-interface = { version = "1.0" }
 

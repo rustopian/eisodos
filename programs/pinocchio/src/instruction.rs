@@ -15,6 +15,11 @@ pub enum Instruction {
     SlotHashesPositionInterpolated,// Tag 7
     SlotHashesGetHashMidpoint,     // Tag 8
     SlotHashesPositionMidpoint,    // Tag 9
+    SlotHashesGetEntryUnchecked,           // Tag 10
+    SlotHashesGetHashInterpolatedUnchecked,// Tag 11
+    SlotHashesPositionInterpolatedUnchecked,// Tag 12
+    SlotHashesGetHashMidpointUnchecked,     // Tag 13
+    SlotHashesPositionMidpointUnchecked,    // Tag 14
 }
 
 impl Instruction {
@@ -44,6 +49,16 @@ impl Instruction {
             Some((&8, [])) => Ok(Instruction::SlotHashesGetHashMidpoint),
             // 9 - SlotHashesPositionMidpoint
             Some((&9, [])) => Ok(Instruction::SlotHashesPositionMidpoint),
+            // 10 - SlotHashesGetEntryUnchecked
+            Some((&10, [])) => Ok(Instruction::SlotHashesGetEntryUnchecked),
+            // 11 - SlotHashesGetHashInterpolatedUnchecked
+            Some((&11, [])) => Ok(Instruction::SlotHashesGetHashInterpolatedUnchecked),
+            // 12 - SlotHashesPositionInterpolatedUnchecked
+            Some((&12, [])) => Ok(Instruction::SlotHashesPositionInterpolatedUnchecked),
+            // 13 - SlotHashesGetHashMidpointUnchecked
+            Some((&13, [])) => Ok(Instruction::SlotHashesGetHashMidpointUnchecked),
+            // 14 - SlotHashesPositionMidpointUnchecked
+            Some((&14, [])) => Ok(Instruction::SlotHashesPositionMidpointUnchecked),
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }

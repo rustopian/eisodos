@@ -6,6 +6,11 @@ use {
             process_slot_hashes_get_entry, process_slot_hashes_get_hash_interpolated,
             process_slot_hashes_position_interpolated, process_slot_hashes_get_hash_midpoint,
             process_slot_hashes_position_midpoint,
+            process_slot_hashes_get_entry_unchecked,
+            process_slot_hashes_get_hash_interpolated_unchecked,
+            process_slot_hashes_position_interpolated_unchecked,
+            process_slot_hashes_get_hash_midpoint_unchecked,
+            process_slot_hashes_position_midpoint_unchecked,
         },
     },
     pinocchio::{
@@ -37,5 +42,10 @@ pub fn process_instruction(
         Instruction::SlotHashesPositionInterpolated => process_slot_hashes_position_interpolated(accounts),
         Instruction::SlotHashesGetHashMidpoint => process_slot_hashes_get_hash_midpoint(accounts),
         Instruction::SlotHashesPositionMidpoint => process_slot_hashes_position_midpoint(accounts),
+        Instruction::SlotHashesGetEntryUnchecked => unsafe { process_slot_hashes_get_entry_unchecked(accounts) },
+        Instruction::SlotHashesGetHashInterpolatedUnchecked => unsafe { process_slot_hashes_get_hash_interpolated_unchecked(accounts) },
+        Instruction::SlotHashesPositionInterpolatedUnchecked => unsafe { process_slot_hashes_position_interpolated_unchecked(accounts) },
+        Instruction::SlotHashesGetHashMidpointUnchecked => unsafe { process_slot_hashes_get_hash_midpoint_unchecked(accounts) },
+        Instruction::SlotHashesPositionMidpointUnchecked => unsafe { process_slot_hashes_position_midpoint_unchecked(accounts) },
     }
 }

@@ -54,11 +54,18 @@ pub enum ProgramInstruction {
     Account { expected: u64 },
     CreateAccount,
     Transfer,
-    SlotHashesGetEntry,          
-    SlotHashesGetHashInterpolated, 
-    SlotHashesPositionInterpolated,
-    SlotHashesGetHashMidpoint,     
-    SlotHashesPositionMidpoint,    
+    // --- SlotHashes (Safe/Checked Path - Primarily for SDK/Nostd now) ---
+    SlotHashesGetEntryChecked,           // ID 5
+    SlotHashesGetHashChecked,            // ID 6 (Treat Interpolated/Midpoint same for SDK/Nostd manual search)
+    SlotHashesPositionChecked,           // ID 7
+    // IDs 8, 9 reserved/unused for SDK/Nostd
+
+    // --- SlotHashes (Unsafe/Unchecked Path - For Pinocchio Benchmarking) ---
+    SlotHashesGetEntryUnchecked,           // ID 10
+    SlotHashesGetHashInterpolatedUnchecked,// ID 11
+    SlotHashesPositionInterpolatedUnchecked,// ID 12
+    SlotHashesGetHashMidpointUnchecked,     // ID 13
+    SlotHashesPositionMidpointUnchecked,    // ID 14
 }
 
 /// Returns the instruction data for the given instruction.
@@ -74,11 +81,18 @@ pub fn instruction_data(instruction: ProgramInstruction) -> Vec<u8> {
         }
         ProgramInstruction::CreateAccount => vec![3],
         ProgramInstruction::Transfer => vec![4],
-        ProgramInstruction::SlotHashesGetEntry => vec![5],
-        ProgramInstruction::SlotHashesGetHashInterpolated => vec![6],
-        ProgramInstruction::SlotHashesPositionInterpolated => vec![7],
-        ProgramInstruction::SlotHashesGetHashMidpoint => vec![8],
-        ProgramInstruction::SlotHashesPositionMidpoint => vec![9],
+        // Checked path instructions (match SDK/Nostd implementation)
+        ProgramInstruction::SlotHashesGetEntryChecked => vec![5],
+        ProgramInstruction::SlotHashesGetHashChecked => vec![6],
+        ProgramInstruction::SlotHashesPositionChecked => vec![7],
+        // Unchecked path instructions (Pinocchio specific tests)
+        ProgramInstruction::SlotHashesGetEntryUnchecked => vec![10],
+        ProgramInstruction::SlotHashesGetHashInterpolatedUnchecked => vec![11],
+        ProgramInstruction::SlotHashesPositionInterpolatedUnchecked => vec![12],
+        ProgramInstruction::SlotHashesGetHashMidpointUnchecked => vec![13],
+        ProgramInstruction::SlotHashesPositionMidpointUnchecked => vec![14],
+        // Default/Error case for unused IDs (8, 9) - or handle in processor
+        _ => vec![255], // Or panic, or specific error instruction
     }
 }
 

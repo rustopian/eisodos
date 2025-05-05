@@ -47,30 +47,44 @@ pub fn run(program_id: &Pubkey, name: &'static str) {
     benchmark_data.push((format!("{}: Transfer", name), instruction, accounts));
 
     // --- Generate data for SlotHashes benchmarks with different strategies ---
-    let generate_fn: fn(Pubkey, ProgramInstruction, DecrementStrategy) -> (Instruction, Vec<(Pubkey, Account)>) = 
-        if name == "eisodos_pinocchio" {
-            generate_pinocchio_slot_hashes_ix
-        } else {
-            generate_sdk_slot_hashes_ix
-        };
-
     let strategies = [
         (DecrementStrategy::Strictly1, "Strictly1"),
         (DecrementStrategy::Average1_05, "Avg1.05"),
         (DecrementStrategy::Average2, "Avg2"),
     ];
 
-    let slot_hash_instructions_and_names = [
-        (ProgramInstruction::SlotHashesGetEntry, "SlotHashesGetEntry"),
-        (ProgramInstruction::SlotHashesGetHashInterpolated, "SlotHashesGetHashInterpolated"),
-        (ProgramInstruction::SlotHashesPositionInterpolated, "SlotHashesPositionInterpolated"),
-        (ProgramInstruction::SlotHashesGetHashMidpoint, "SlotHashesGetHashMidpoint"),
-        (ProgramInstruction::SlotHashesPositionMidpoint, "SlotHashesPositionMidpoint"),
+    // Define instruction types and base names for SlotHashes
+    let slot_hash_benchmarks = [
+        // Use UNCHECKED instructions for Pinocchio
+        ("eisodos_pinocchio", ProgramInstruction::SlotHashesGetEntryUnchecked, "GetEntry"),
+        ("eisodos_pinocchio", ProgramInstruction::SlotHashesGetHashInterpolatedUnchecked, "GetHashInterpolated"),
+        ("eisodos_pinocchio", ProgramInstruction::SlotHashesPositionInterpolatedUnchecked, "PositionInterpolated"),
+        ("eisodos_pinocchio", ProgramInstruction::SlotHashesGetHashMidpointUnchecked, "GetHashMidpoint"),
+        ("eisodos_pinocchio", ProgramInstruction::SlotHashesPositionMidpointUnchecked, "PositionMidpoint"),
+        // Use CHECKED instructions for SDK / Nostd (which use generate_sdk_slot_hashes_ix)
+        ("eisodos_solana_program", ProgramInstruction::SlotHashesGetEntryChecked, "GetEntry"),
+        ("eisodos_solana_program", ProgramInstruction::SlotHashesGetHashChecked, "GetHash"), // Using generic name
+        ("eisodos_solana_program", ProgramInstruction::SlotHashesPositionChecked, "Position"),
+        ("eisodos_solana_nostd_entrypoint", ProgramInstruction::SlotHashesGetEntryChecked, "GetEntry"),
+        ("eisodos_solana_nostd_entrypoint", ProgramInstruction::SlotHashesGetHashChecked, "GetHash"),
+        ("eisodos_solana_nostd_entrypoint", ProgramInstruction::SlotHashesPositionChecked, "Position"),
     ];
 
     for (strategy, strategy_name) in strategies {
-        for &(ref ix_type, base_name) in &slot_hash_instructions_and_names {
-            let (instruction, accounts) = generate_fn(*program_id, *ix_type, strategy);
+        // Select the correct generation function based on the current program being run
+        let generate_fn: fn(Pubkey, ProgramInstruction, DecrementStrategy) -> (Instruction, Vec<(Pubkey, Account)>) = 
+            if name == "eisodos_pinocchio" {
+                generate_pinocchio_slot_hashes_ix
+            } else {
+                generate_sdk_slot_hashes_ix
+            };
+
+        // Filter benchmarks relevant to the current program (`name`)
+        for &(prog_name_filter, ix_type, base_name) in slot_hash_benchmarks.iter() {
+            if prog_name_filter != name { continue; }
+
+            // Generate data for the specific instruction and strategy
+            let (instruction, accounts) = generate_fn(*program_id, ix_type, strategy);
             let bench_id = format!("{}: {} ({})", name, base_name, strategy_name);
             benchmark_data.push((bench_id, instruction, accounts));
         }

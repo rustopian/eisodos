@@ -222,6 +222,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eab1c04a571841102f5345a8fc0f6bb3d31c315dec879b5c6e42e40ce7ffa34e"
 
 [[package]]
+name = "assert_matches"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b34d609dfbaf33d6889b2b7106d3ca345eacad44200913df5ba02bfd31d2ba9"
+
+[[package]]
 name = "async-compression"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -895,10 +901,10 @@ dependencies = [
  "mollusk-svm-bencher",
  "solana-account",
  "solana-instruction",
- "solana-logger",
+ "solana-logger 2.3.1",
  "solana-program 2.2.1",
  "solana-pubkey",
- "solana-sdk",
+ "solana-sdk 2.2.1",
  "solana-system-interface",
 ]
 
@@ -908,6 +914,8 @@ version = "0.0.0"
 dependencies = [
  "pinocchio",
  "pinocchio-pubkey",
+ "solana-program 1.18.23",
+ "solana-sdk 1.18.23",
 ]
 
 [[package]]
@@ -918,12 +926,14 @@ dependencies = [
  "bytemuck",
  "solana-nostd-entrypoint",
  "solana-program 1.18.23",
+ "solana-sdk 1.18.23",
 ]
 
 [[package]]
 name = "eisodos-solana-program"
 version = "0.0.0"
 dependencies = [
+ "borsh 0.10.3",
  "solana-account-info",
  "solana-cpi",
  "solana-msg",
@@ -931,6 +941,7 @@ dependencies = [
  "solana-program-entrypoint",
  "solana-program-error",
  "solana-pubkey",
+ "solana-sdk 1.18.23",
  "solana-system-interface",
 ]
 
@@ -1614,7 +1625,7 @@ dependencies = [
  "solana-instruction",
  "solana-loader-v3-interface",
  "solana-log-collector",
- "solana-logger",
+ "solana-logger 2.3.1",
  "solana-precompiles",
  "solana-program-error",
  "solana-program-runtime",
@@ -2360,13 +2371,35 @@ dependencies = [
 
 [[package]]
 name = "serde_with"
+version = "2.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07ff71d2c147a7b57362cead5e22f772cd52f6ab31cfcd9edcd7f6aeb2a0afbe"
+dependencies = [
+ "serde",
+ "serde_with_macros 2.3.3",
+]
+
+[[package]]
+name = "serde_with"
 version = "3.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6b6f7f2fcb69f747921f79f3926bd1e203fce4fef62c268dd3abfb6d86029aa"
 dependencies = [
  "serde",
  "serde_derive",
- "serde_with_macros",
+ "serde_with_macros 3.12.0",
+]
+
+[[package]]
+name = "serde_with_macros"
+version = "2.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "881b6f881b17d13214e5d494c939ebab463d01264ce1811e9d4ac3a882e7695f"
+dependencies = [
+ "darling",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.87",
 ]
 
 [[package]]
@@ -2980,7 +3013,7 @@ dependencies = [
  "solana-hash",
  "solana-inflation",
  "solana-keypair",
- "solana-logger",
+ "solana-logger 2.3.1",
  "solana-native-token",
  "solana-poh-config",
  "solana-pubkey",
@@ -3164,6 +3197,17 @@ dependencies = [
 
 [[package]]
 name = "solana-logger"
+version = "1.18.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10948c30d138d6fbfc2ae78a4882be5a9ebffa4bb1239c4efc386104ebc35b7f"
+dependencies = [
+ "env_logger",
+ "lazy_static",
+ "log",
+]
+
+[[package]]
+name = "solana-logger"
 version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db8e777ec1afd733939b532a42492d888ec7c88d8b4127a5d867eb45c6eb5cd5"
@@ -3299,7 +3343,7 @@ dependencies = [
  "cfg_eval",
  "serde",
  "serde_derive",
- "serde_with",
+ "serde_with 3.12.0",
 ]
 
 [[package]]
@@ -3710,6 +3754,61 @@ dependencies = [
  "rustc-demangle",
  "thiserror 1.0.69",
  "winapi",
+]
+
+[[package]]
+name = "solana-sdk"
+version = "1.18.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4b3f2080eddef6552fde7f149c429cf05b9bb0605a068b0d28e19d793e24df4"
+dependencies = [
+ "assert_matches",
+ "base64 0.21.7",
+ "bincode",
+ "bitflags 2.9.0",
+ "borsh 1.5.7",
+ "bs58 0.4.0",
+ "bytemuck",
+ "byteorder",
+ "chrono",
+ "derivation-path",
+ "digest 0.10.7",
+ "ed25519-dalek",
+ "ed25519-dalek-bip32",
+ "generic-array",
+ "hmac 0.12.1",
+ "itertools 0.10.5",
+ "js-sys",
+ "lazy_static",
+ "libsecp256k1",
+ "log",
+ "memmap2",
+ "num-derive",
+ "num-traits",
+ "num_enum",
+ "pbkdf2 0.11.0",
+ "qstring",
+ "qualifier_attr",
+ "rand 0.7.3",
+ "rand 0.8.5",
+ "rustc_version",
+ "rustversion",
+ "serde",
+ "serde_bytes",
+ "serde_derive",
+ "serde_json",
+ "serde_with 2.3.3",
+ "sha2 0.10.8",
+ "sha3",
+ "siphasher",
+ "solana-frozen-abi",
+ "solana-frozen-abi-macro",
+ "solana-logger 1.18.23",
+ "solana-program 1.18.23",
+ "solana-sdk-macro 1.18.23",
+ "thiserror 1.0.69",
+ "uriparse",
+ "wasm-bindgen",
 ]
 
 [[package]]

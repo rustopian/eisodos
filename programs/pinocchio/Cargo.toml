@@ -19,3 +19,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 pinocchio = { version = "0.8", git = "https://github.com/rustopian/pinocchio.git", branch = "rustopian/slot-hashes-sysvar" }
 pinocchio-pubkey = { version = "0.2", git = "https://github.com/rustopian/pinocchio.git", branch = "rustopian/slot-hashes-sysvar" }
+
+[dev-dependencies]
+solana-sdk = "1.18"
+solana-program = "1.18"

@@ -18,3 +18,6 @@ borsh = "0.9.3"
 solana-nostd-entrypoint = "0.6"
 solana-program = "1.18"
 bytemuck = { version = "1.15", features = ["derive"] }
+
+[dev-dependencies]
+solana-sdk = "1.18"

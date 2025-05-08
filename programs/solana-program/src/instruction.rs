@@ -13,8 +13,6 @@ pub enum Instruction {
     SlotHashesGetEntry,          // Tag 5
     SlotHashesGetHashInterpolated, // Tag 6
     SlotHashesPositionInterpolated,// Tag 7
-    SlotHashesGetHashMidpoint,     // Tag 8
-    SlotHashesPositionMidpoint,    // Tag 9
 }
 
 impl Instruction {
@@ -40,10 +38,6 @@ impl Instruction {
             Some((&6, [])) => Ok(Instruction::SlotHashesGetHashInterpolated),
             // 7 - SlotHashesPositionInterpolated
             Some((&7, [])) => Ok(Instruction::SlotHashesPositionInterpolated),
-            // 8 - SlotHashesGetHashMidpoint
-            Some((&8, [])) => Ok(Instruction::SlotHashesGetHashMidpoint),
-            // 9 - SlotHashesPositionMidpoint
-            Some((&9, [])) => Ok(Instruction::SlotHashesPositionMidpoint),
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }

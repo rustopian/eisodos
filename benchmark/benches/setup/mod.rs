@@ -1,21 +1,20 @@
 pub mod runner;
 
 // Bring crates into scope
-use solana_program;
-
 use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_pubkey::Pubkey;
-use std::vec;
-// Use Sysvar ID from solana_program
-use solana_program::sysvar::ID as SYSVAR_PROGRAM_ID;
+use solana_program;
 // Imports needed for SlotHashes construction
 // Use correct paths for 1.18
 use solana_program::clock::Slot;
 use solana_program::hash::Hash;
 // SlotHash is a type alias (Slot, Hash)
 use solana_program::slot_hashes::SlotHash;
+// Use Sysvar ID from solana_program
+use solana_program::sysvar::ID as SYSVAR_PROGRAM_ID;
+use solana_pubkey::Pubkey;
+use std::vec;
 
 // Enum to control slot decrement behavior in mock data generation
 #[derive(Clone, Copy, Debug)]
@@ -27,7 +26,7 @@ enum DecrementStrategy {
 
 pub const BASE_LAMPORTS: u64 = 2_000_000_000u64;
 const NUM_BENCH_SLOT_HASH_ENTRIES: usize = 512;
-const BENCH_SLOT_HASH_START_SLOT: u64 = 900;
+const BENCH_SLOT_HASH_START_SLOT: u64 = 10000;
 
 // Simple deterministic PRNG for varied decrements
 // Using a basic Lehmer / MINSTD generator approach
@@ -55,17 +54,15 @@ pub enum ProgramInstruction {
     CreateAccount,
     Transfer,
     // --- SlotHashes (Safe/Checked Path - Primarily for SDK/Nostd now) ---
-    SlotHashesGetEntryChecked,           // ID 5
-    SlotHashesGetHashChecked,            // ID 6 (Treat Interpolated/Midpoint same for SDK/Nostd manual search)
-    SlotHashesPositionChecked,           // ID 7
-    // IDs 8, 9 reserved/unused for SDK/Nostd
-
+    SlotHashesGetEntryChecked, // ID 5
+    SlotHashesGetHashChecked,  /* ID 6 (Treat Interpolated/Midpoint same for SDK/Nostd manual
+                                * search) */
+    SlotHashesPositionChecked, // ID 7
     // --- SlotHashes (Unsafe/Unchecked Path - For Pinocchio Benchmarking) ---
-    SlotHashesGetEntryUnchecked,           // ID 10
-    SlotHashesGetHashInterpolatedUnchecked,// ID 11
-    SlotHashesPositionInterpolatedUnchecked,// ID 12
-    SlotHashesGetHashMidpointUnchecked,     // ID 13
-    SlotHashesPositionMidpointUnchecked,    // ID 14
+    SlotHashesGetEntryUnchecked,             // ID 8
+    SlotHashesGetHashInterpolatedUnchecked,  // ID 9
+    SlotHashesPositionInterpolatedUnchecked { target_slot: Slot }, // ID 10 <- Takes Slot
+    SlotHashesPositionNaiveUnchecked { target_slot: Slot },        // ID 11 <- Takes Slot
 }
 
 /// Returns the instruction data for the given instruction.
@@ -86,12 +83,21 @@ pub fn instruction_data(instruction: ProgramInstruction) -> Vec<u8> {
         ProgramInstruction::SlotHashesGetHashChecked => vec![6],
         ProgramInstruction::SlotHashesPositionChecked => vec![7],
         // Unchecked path instructions (Pinocchio specific tests)
-        ProgramInstruction::SlotHashesGetEntryUnchecked => vec![10],
-        ProgramInstruction::SlotHashesGetHashInterpolatedUnchecked => vec![11],
-        ProgramInstruction::SlotHashesPositionInterpolatedUnchecked => vec![12],
-        ProgramInstruction::SlotHashesGetHashMidpointUnchecked => vec![13],
-        ProgramInstruction::SlotHashesPositionMidpointUnchecked => vec![14],
-        // Default/Error case for unused IDs (8, 9) - or handle in processor
+        ProgramInstruction::SlotHashesGetEntryUnchecked => vec![8],
+        ProgramInstruction::SlotHashesGetHashInterpolatedUnchecked => vec![9],
+        ProgramInstruction::SlotHashesPositionInterpolatedUnchecked { target_slot } => {
+            let mut data = Vec::with_capacity(1 + 8);
+            data.push(10);
+            data.extend_from_slice(&target_slot.to_le_bytes());
+            data
+        }
+        ProgramInstruction::SlotHashesPositionNaiveUnchecked { target_slot } => {
+            let mut data = Vec::with_capacity(1 + 8);
+            data.push(11);
+            data.extend_from_slice(&target_slot.to_le_bytes());
+            data
+        }
+        // Default/Error case for unused IDs - or handle in processor
         _ => vec![255], // Or panic, or specific error instruction
     }
 }
@@ -119,13 +125,29 @@ fn generate_mock_slot_hashes_data(strategy: DecrementStrategy) -> Vec<(u64, [u8;
         let decrement = match strategy {
             DecrementStrategy::Strictly1 => 1,
             DecrementStrategy::Average1_05 => {
-                if random_val % 20 == 0 { 2 } else { 1 }
+                if random_val % 20 == 0 {
+                    2
+                } else {
+                    1
+                }
             }
             DecrementStrategy::Average2 => {
-                if random_val % 2 == 0 { 1 } else { 3 }
+                if random_val % 2 == 0 {
+                    1
+                } else {
+                    3
+                }
             }
         };
-        current_slot = current_slot.saturating_sub(decrement);
+        
+        // Calculate next slot and check for saturation/no change
+        let next_slot = current_slot.saturating_sub(decrement);
+        if next_slot == current_slot {
+            // If next slot is same as current (i.e., saturated at 0 or decrement was 0),
+            // stop generating to ensure strict monotonicity.
+            break;
+        }
+        current_slot = next_slot; // Update for the *next* iteration
     }
     entries
 }
@@ -235,23 +257,25 @@ fn generate_transfer(program_id: Pubkey) -> (Instruction, Vec<(Pubkey, Account)>
     )
 }
 
-/// Generates the instruction data and accounts for the SlotHashes instructions (SDK version).
+/// Generates the instruction data and accounts for the SlotHashes instructions
+/// (SDK version).
 fn generate_sdk_slot_hashes_ix(
-    program_id: Pubkey, 
-    ix_type: ProgramInstruction, 
-    strategy: DecrementStrategy
+    program_id: Pubkey,
+    ix_type: ProgramInstruction,
+    strategy: DecrementStrategy,
 ) -> (Instruction, Vec<(Pubkey, Account)>) {
     // Use the well-known ID directly to avoid sdk dependency
     let sysvar_id = solana_pubkey::Pubkey::new_from_array([
-        6, 167, 213, 23, 25, 47, 10, 175, 198, 242, 101, 227, 251, 119, 204, 122, 
-        218, 130, 197, 41, 208, 190, 59, 19, 110, 45, 0, 85, 32, 0, 0, 0
+        6, 167, 213, 23, 25, 47, 10, 175, 198, 242, 101, 227, 251, 119, 204, 122, 218, 130, 197,
+        41, 208, 190, 59, 19, 110, 45, 0, 85, 32, 0, 0, 0,
     ]);
 
     // Generate realistic mock SlotHashes data
     let mock_entries_raw = generate_mock_slot_hashes_data(strategy);
 
-    // Manually serialize mock data according to layout: u64 len + [(u64 slot, [u8; 32] hash)]
-    // (Using u64 len for consistency, as prefix didn't cause the UnsupportedSysvar error)
+    // Manually serialize mock data according to layout: u64 len + [(u64 slot, [u8;
+    // 32] hash)] (Using u64 len for consistency, as prefix didn't cause the
+    // UnsupportedSysvar error)
     let num_entries = mock_entries_raw.len() as u64;
     let mut data = Vec::with_capacity(8 + mock_entries_raw.len() * (8 + 32)); // Use 8 for u64 len
     data.extend_from_slice(&(num_entries as u64).to_le_bytes());
@@ -279,43 +303,51 @@ fn generate_sdk_slot_hashes_ix(
     )
 }
 
-/// Generates the instruction data and accounts for the SlotHashes instructions (Pinocchio version).
+/// Generates the instruction data and accounts for the SlotHashes instructions
+/// (Pinocchio version).
 fn generate_pinocchio_slot_hashes_ix(
-    program_id: Pubkey, 
-    ix_type: ProgramInstruction, 
-    strategy: DecrementStrategy
-) -> (Instruction, Vec<(Pubkey, Account)>) {
-    // Use the well-known ID directly to avoid sdk dependency
+    program_id: Pubkey,
+    // ix_type now includes the target slot if needed
+    ix_variant: ProgramInstruction, 
+    strategy: DecrementStrategy,
+    // Pass the specific target_slot value IF the instruction needs it.
+    // We'll determine this target_slot in the runner.rs logic.
+    // Let's keep the function signature simpler for now and derive target inside if needed,
+    // or modify runner.rs to pass it only when ix_variant requires it.
+    // Simpler: Let runner.rs handle providing the full ix_variant including the target slot.
+) -> (Instruction, Vec<(Pubkey, Account)>) { 
     let sysvar_id = solana_pubkey::Pubkey::new_from_array([
-        6, 167, 213, 23, 25, 47, 10, 175, 198, 242, 101, 227, 251, 119, 204, 122, 
-        218, 130, 197, 41, 208, 190, 59, 19, 110, 45, 0, 85, 32, 0, 0, 0
+        6, 167, 213, 23, 25, 47, 10, 175, 198, 242, 101, 227, 251, 119, 204, 122, 218, 130, 197,
+        41, 208, 190, 59, 19, 110, 45, 0, 85, 32, 0, 0, 0,
     ]);
 
-    // Generate realistic mock SlotHashes data
+    // Generate realistic mock SlotHashes data - needed for account setup
     let mock_entries = generate_mock_slot_hashes_data(strategy);
 
     let num_entries = mock_entries.len() as u64;
-    let mut data = Vec::with_capacity(8 + mock_entries.len() * (8 + 32)); // Use 8 for u64 len
-    data.extend_from_slice(&(num_entries as u64).to_le_bytes());
+    let mut account_data = Vec::with_capacity(8 + mock_entries.len() * (8 + 32)); 
+    account_data.extend_from_slice(&(num_entries as u64).to_le_bytes());
     for (slot, hash) in &mock_entries {
-        data.extend_from_slice(&slot.to_le_bytes());
-        data.extend_from_slice(hash);
+        account_data.extend_from_slice(&slot.to_le_bytes());
+        account_data.extend_from_slice(hash);
     }
 
-    // Create the sysvar account (owned by SYSVAR_PROGRAM_ID)
-    let mut sysvar_account = Account::new(1, data.len(), &SYSVAR_PROGRAM_ID);
-    sysvar_account.data = data;
+    // Create the sysvar account 
+    let mut sysvar_account = Account::new(1, account_data.len(), &SYSVAR_PROGRAM_ID);
+    sysvar_account.data = account_data;
     sysvar_account.executable = false;
 
     let accounts = vec![(sysvar_id, sysvar_account)];
-
     let account_metas = vec![AccountMeta::new_readonly(sysvar_id, false)];
+
+    // Generate instruction data using the provided full ix_variant
+    let instruction_bytes = instruction_data(ix_variant);
 
     (
         Instruction {
             program_id,
             accounts: account_metas,
-            data: instruction_data(ix_type),
+            data: instruction_bytes,
         },
         accounts,
     )

@@ -1,4 +1,5 @@
 use pinocchio::program_error::ProgramError;
+use pinocchio::sysvars::clock::Slot;
 
 #[derive(Clone, Debug)]
 #[rustfmt::skip]
@@ -13,13 +14,10 @@ pub enum Instruction {
     SlotHashesGetEntry,          // Tag 5
     SlotHashesGetHashInterpolated, // Tag 6
     SlotHashesPositionInterpolated,// Tag 7
-    SlotHashesGetHashMidpoint,     // Tag 8
-    SlotHashesPositionMidpoint,    // Tag 9
-    SlotHashesGetEntryUnchecked,           // Tag 10
-    SlotHashesGetHashInterpolatedUnchecked,// Tag 11
-    SlotHashesPositionInterpolatedUnchecked,// Tag 12
-    SlotHashesGetHashMidpointUnchecked,     // Tag 13
-    SlotHashesPositionMidpointUnchecked,    // Tag 14
+    SlotHashesGetEntryUnchecked,           // Tag 8
+    SlotHashesGetHashInterpolatedUnchecked,// Tag 9
+    SlotHashesPositionInterpolatedUnchecked { target_slot: Slot }, // Tag 10
+    SlotHashesPositionNaiveUnchecked { target_slot: Slot },   // Tag 11
 }
 
 impl Instruction {
@@ -45,20 +43,20 @@ impl Instruction {
             Some((&6, [])) => Ok(Instruction::SlotHashesGetHashInterpolated),
             // 7 - SlotHashesPositionInterpolated
             Some((&7, [])) => Ok(Instruction::SlotHashesPositionInterpolated),
-            // 8 - SlotHashesGetHashMidpoint
-            Some((&8, [])) => Ok(Instruction::SlotHashesGetHashMidpoint),
-            // 9 - SlotHashesPositionMidpoint
-            Some((&9, [])) => Ok(Instruction::SlotHashesPositionMidpoint),
-            // 10 - SlotHashesGetEntryUnchecked
-            Some((&10, [])) => Ok(Instruction::SlotHashesGetEntryUnchecked),
-            // 11 - SlotHashesGetHashInterpolatedUnchecked
-            Some((&11, [])) => Ok(Instruction::SlotHashesGetHashInterpolatedUnchecked),
-            // 12 - SlotHashesPositionInterpolatedUnchecked
-            Some((&12, [])) => Ok(Instruction::SlotHashesPositionInterpolatedUnchecked),
-            // 13 - SlotHashesGetHashMidpointUnchecked
-            Some((&13, [])) => Ok(Instruction::SlotHashesGetHashMidpointUnchecked),
-            // 14 - SlotHashesPositionMidpointUnchecked
-            Some((&14, [])) => Ok(Instruction::SlotHashesPositionMidpointUnchecked),
+            // 8 - SlotHashesGetEntryUnchecked
+            Some((&8, [])) => Ok(Instruction::SlotHashesGetEntryUnchecked),
+            // 9 - SlotHashesGetHashInterpolatedUnchecked
+            Some((&9, [])) => Ok(Instruction::SlotHashesGetHashInterpolatedUnchecked),
+            // 10 - SlotHashesPositionInterpolatedUnchecked { target_slot: Slot }
+            Some((&10, remaining)) if remaining.len() == 8 => {
+                let target_slot = u64::from_le_bytes(remaining[0..8].try_into().unwrap());
+                Ok(Instruction::SlotHashesPositionInterpolatedUnchecked { target_slot })
+            },
+            // 11 - SlotHashesPositionNaiveUnchecked { target_slot: Slot }
+            Some((&11, remaining)) if remaining.len() == 8 => {
+                let target_slot = u64::from_le_bytes(remaining[0..8].try_into().unwrap());
+                Ok(Instruction::SlotHashesPositionNaiveUnchecked { target_slot })
+            },
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }

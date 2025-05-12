@@ -8,7 +8,7 @@ name = "coyote"
 path = "src/main.rs"
 
 [dev-dependencies]
-# borsh = "1.5.7"
+eisodos-jiminy = { path="../programs/jiminy" }
 eisodos-pinocchio = { path="../programs/pinocchio" }
 eisodos-solana-nostd-entrypoint = { path="../programs/solana-nostd-entrypoint" }
 eisodos-solana-program = { path="../programs/solana-program" }

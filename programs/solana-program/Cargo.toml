@@ -23,5 +23,10 @@ solana-cpi = "2.2"
 solana-msg = "2.2"
 solana-program-entrypoint = "2.2"
 solana-program-error = "2.2"
+solana-program = "2.2"
 solana-pubkey = "2.2"
 solana-system-interface = { version = "1.0", features = ["bincode"] }
+borsh = "0.10.3"
+
+[dev-dependencies]
+solana-sdk = "1.18"

@@ -1,4 +1,4 @@
-use solana_program_error::ProgramError;
+use solana_program::program_error::ProgramError;
 
 #[derive(Clone, Debug)]
 #[rustfmt::skip]
@@ -10,6 +10,9 @@ pub enum Instruction {
     },
     CreateAccount,
     Transfer,
+    SlotHashesGetEntry,          // Tag 5
+    SlotHashesGetHashInterpolated, // Tag 6
+    SlotHashesPositionInterpolated,// Tag 7
 }
 
 impl Instruction {
@@ -29,6 +32,12 @@ impl Instruction {
             Some((&3, [])) => Ok(Instruction::CreateAccount),
             // 4 - Transfer
             Some((&4, [])) => Ok(Instruction::Transfer),
+            // 5 - SlotHashesGetEntry
+            Some((&5, [])) => Ok(Instruction::SlotHashesGetEntry),
+            // 6 - SlotHashesGetHashInterpolated
+            Some((&6, [])) => Ok(Instruction::SlotHashesGetHashInterpolated),
+            // 7 - SlotHashesPositionInterpolated
+            Some((&7, [])) => Ok(Instruction::SlotHashesPositionInterpolated),
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }

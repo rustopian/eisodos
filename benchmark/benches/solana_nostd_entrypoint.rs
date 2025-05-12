@@ -5,6 +5,7 @@ extern crate mollusk_svm_bencher;
 extern crate solana_account;
 extern crate solana_instruction;
 extern crate solana_pubkey;
+extern crate solana_sdk;
 extern crate test;
 
 mod setup;

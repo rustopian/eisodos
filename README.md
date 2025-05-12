@@ -36,11 +36,27 @@ Entrypoint implementation currently included in the benchmark:
 | _CPI_         |
 | CreateAccount | 🟨 1,449 (+142) | 🟨 1,494 (+187)           | 🟥 2,786 (+1,479) | 🟩 **1,307** |
 | Transfer      | 🟨 1,439 (+140) | 🟨 1,487 (+180)           | 🟥 2,379 (+1,080) | 🟩 **1,299** |
+=======
+| Benchmark     | `pinocchio`    | `solana-nostd-entrypoint` | `solana-program`   |
+| ------------- | -------------- | ------------------------- | ------------------ |
+| _Entrypoint_  |
+| Ping          | 🟩 **14**      | 🟩 15 (+1)                 | 🟥 117 (+103)      |
+| Log           | 🟩 **119**     | 🟩 120 (+1)                | 🟥 222 (+103)      |
+| Account (1)   | 🟩 **38**      | 🟩 42 (+4)                 | 🟥 317 (+279)      |
+| Account (3)   | 🟩 **66**      | 🟩 72 (+6)                 | 🟥 641 (+575)      |
+| Account (5)   | 🟩 **94**      | 🟩 102 (+8)                | 🟥 965 (+871)      |
+| Account (10)  | 🟩 **164**     | 🟩 177 (+13)               | 🟥 1,775 (+1,611)  |
+| Account (20)  | 🟩 **304**     | 🟨 327 (+23)               | 🟥 3,395 (+3,091)  |
+| Account (32)  | 🟩 **472**     | 🟨 507 (+35)               | 🟥 5,339 (+4,867)  |
+| Account (64)  | 🟩 **920**     | 🟨 988 (+68)               | 🟥 10,523 (+9,603) |
+| _CPI_         |
+| CreateAccount | 🟩 **1,311**   | 🟩 1,314 (+3)              | 🟥 2,866 (+1,555)  |
+| Transfer      | 🟩 **1,307**   | 🟩 1,309 (+2)              | 🟥 2,459 (+1,152)  |
 
 > [!IMPORTANT]
 > Values correspond to compute units (CUs) consumed by the entrypoint. The delta in relation to the lowest consumption is shown in brackets.
 >
-> Solana CLI `v2.2.6` was used in the bench tests.
+> Solana CLI `v2.2.13` was used in the bench tests.
 
 ## Binary Sizes
 

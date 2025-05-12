@@ -957,11 +957,11 @@ dependencies = [
  "eisodos-pinocchio",
  "eisodos-solana-nostd-entrypoint",
  "eisodos-solana-program",
+ "hex",
  "mollusk-svm",
  "mollusk-svm-bencher",
  "solana-account",
  "solana-instruction",
- "solana-logger 2.3.1",
  "solana-program 2.2.1",
  "solana-pubkey",
  "solana-sdk 2.2.2",
@@ -1205,7 +1205,7 @@ checksum = "3313f0db62e8711fcace7bf202025b00efe5ab9c8d35209241b79c877f72ba6f"
 dependencies = [
  "heck",
  "quote",
- "syn 2.0.87",
+ "syn 2.0.101",
 ]
 
 [[package]]
@@ -1328,6 +1328,12 @@ checksum = "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hmac"

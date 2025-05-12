@@ -1,0 +1,5 @@
+[[benchmark]]
+id = "ping_example_pinocchio"
+function = "ping_crate::benchmarking::ping_for_benchmark"
+entrypoints = ["pinocchio"]
+features = []

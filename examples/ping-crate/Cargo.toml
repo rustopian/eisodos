@@ -4,10 +4,25 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
-[dependencies]
-# Pinocchio SDK is needed for ProgramResult and potentially other types
-# Assuming it's available via the main workspace
-pinocchio = { workspace = true }
+[features]
+default = []
+# Use "std" feature for solana-program based builds
+std = ["solana-program", "solana-program-error"]
+# "provide-handlers" needed for SBF no_std library build process
+provide-handlers = []
 
+# Specify lib target explicitly for clarity if needed, though Cargo usually infers it
 [lib]
-crate-type = ["rlib"] # Library crate for benchmarking 
+crate-type = ["cdylib", "lib"] # Keep existing types
+
+[dependencies]
+# Use pinocchio (no defaults) for no_std builds
+pinocchio = { workspace = true, default-features = false }
+
+# Solana dependencies are optional, activated by "std" feature
+solana-program = { workspace = true, optional = true }
+solana-program-error = { workspace = true, optional = true }
+
+# Other dependencies if needed...
+
+# Library crate for benchmarking 

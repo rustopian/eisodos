@@ -4,20 +4,19 @@
 use pinocchio::{
     program_entrypoint,
     ProgramResult,
-    no_allocator,
-    nostd_panic_handler,
-    account_info::AccountInfo, // Corrected import path
-    pubkey::Pubkey             // Corrected import path
+    account_info::AccountInfo,
+    pubkey::Pubkey
 };
 
 // Import the function to be benchmarked
-// Use %%RUST_IMPORT_CRATE_NAME%% which comes from the function path string
 use %%RUST_IMPORT_CRATE_NAME%%::%%BENCHMARK_FUNCTION_MODULE%%::%%BENCHMARK_FUNCTION_NAME%%;
 
 // Pinocchio entrypoint setup
 program_entrypoint!(process_instruction);
-no_allocator!();        // Ensures no heap allocations are used
-nostd_panic_handler!(); // Provides a panic handler for no_std
+
+// REMOVED: Handlers are now provided by the benchmarked crate via the 'provide-handlers' feature.
+// no_allocator!();
+// nostd_panic_handler!();
 
 // The entrypoint function required by Pinocchio
 #[inline(always)]

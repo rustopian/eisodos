@@ -5,11 +5,12 @@ import shutil
 import subprocess
 import sys
 import os
+import json # Import json module
 import time # Import time for a small delay
 
 # --- Constants ---
 EISODOS_ROOT = pathlib.Path(__file__).parent.parent.resolve()
-WORKSPACE_ROOT = EISODOS_ROOT.parent # Assumes eisodos is direct child of workspace root
+WORKSPACE_ROOT = EISODOS_ROOT
 TEMPLATES_DIR = EISODOS_ROOT / "scripts" / "benchmark_templates"
 TARGET_DIR = EISODOS_ROOT / "target" / "bench_gen"
 BENCHED_CRATE_COPY_DIR_NAME = "benched_crate_src" # Dir name for the copied source
@@ -46,9 +47,12 @@ def replace_placeholders(content, replacements):
     return content
 
 def run_cargo_build(temp_project_dir):
-    """Runs cargo-build-sbf in the specified directory."""
+    """Runs cargo-build-sbf and returns artifact path and program ID."""
     print(f"--- Building benchmark project using cargo-build-sbf in: {temp_project_dir} ---")
     package_name = None
+    program_id = None # Variable to store extracted program ID
+    artifact_path = None # Variable to store artifact path
+    
     try:
         with open(temp_project_dir / "Cargo.toml", "r", encoding="utf-8") as f:
             manifest_content = f.read()
@@ -58,72 +62,83 @@ def run_cargo_build(temp_project_dir):
         print(f"Warning: Could not determine package name from temp Cargo.toml: {e}", file=sys.stderr)
     
     if not package_name:
-        print(f"Error: Cannot determine executable name for build artifact.", file=sys.stderr)
-        return None
+        print(f"Error: Cannot determine package name for build artifact.", file=sys.stderr)
+        return None, None # Return None for both path and ID
+
+    canonical_filename_stem = package_name.replace('-', '_')
+    expected_so_filename = f"{canonical_filename_stem}.so"
+    expected_keypair_filename = f"{canonical_filename_stem}-keypair.json"
+    deploy_dir = temp_project_dir / "target" / "deploy"
+    expected_so_path = deploy_dir / expected_so_filename
+    expected_keypair_path = deploy_dir / expected_keypair_filename
 
     try:
-        # Use cargo-build-sbf. It implies --release by default or handles it internally.
-        build_command = [
-            "cargo-build-sbf", 
-        ]
+        build_command = ["cargo-build-sbf"]
         print(f"Running build command: {' '.join(build_command)} in {temp_project_dir}")
         
         result = subprocess.run(
             build_command,
             cwd=temp_project_dir,
-            check=True, # Raise exception on non-zero exit code
+            check=True,
             capture_output=True,
             text=True,
             encoding='utf-8' 
         )
         print("Build command finished.")
-        # print(result.stdout) # Optionally suppress verbose stdout if too noisy
-        
-        # Optional: Minimal listing if still needed for quick sanity check, otherwise remove.
-        # temp_target_dir = temp_project_dir / "target"
-        # print(f"--- Listing contents of temporary target directory: {temp_target_dir} ---")
-        # if temp_target_dir.is_dir():
-        #     for root, dirs, files in os.walk(temp_target_dir):
-        #         relative_root = pathlib.Path(root).relative_to(temp_target_dir)
-        #         if str(relative_root) == "deploy" and any(f.endswith(".so") for f in files):
-        #             print(f"  Found .so in: {relative_root}")
-        #             for name in files:
-        #                 if name.endswith(".so"):
-        #                     print(f"    - {name}")
-        # else:
-        #     print("  Temporary target directory does not exist.")
-        # print("--- End listing ---")
 
-        # cargo-build-sbf places the final deployable .so file in target/deploy/
-        canonical_filename_stem = package_name.replace('-', '_')
-        expected_filename = f"{canonical_filename_stem}.so"
-        artifact_path_str = str(temp_project_dir / "target" / "deploy" / expected_filename)
-        print(f"Checking for expected artifact at: {artifact_path_str}")
-        
-        # No need for time.sleep(0.1) if os.path.exists works reliably now
-        # time.sleep(0.1)
-
-        if os.path.exists(artifact_path_str):
-            if os.path.isfile(artifact_path_str):
-                print(f"  Artifact found: {artifact_path_str}")
-                return pathlib.Path(artifact_path_str) 
-            else:
-                print(f"  Path exists but is NOT a file: {artifact_path_str}", file=sys.stderr)
-                return None 
+        # Check for SO artifact
+        print(f"Checking for expected artifact at: {expected_so_path}")
+        if os.path.isfile(expected_so_path):
+            print(f"  Artifact found: {expected_so_path}")
+            artifact_path = expected_so_path
         else:
-            print(f"  Artifact NOT found: {artifact_path_str}", file=sys.stderr)
-            return None
+            print(f"  Artifact NOT found: {expected_so_path}", file=sys.stderr)
+            return None, None
+
+        # Check for Keypair file and extract Program ID using solana-keygen
+        print(f"Checking for keypair file at: {expected_keypair_path}")
+        if os.path.isfile(expected_keypair_path):
+            print(f"  Keypair file found: {expected_keypair_path}")
+            try:
+                # Use solana-keygen pubkey to get the base58 program ID
+                keygen_command = ["solana-keygen", "pubkey", str(expected_keypair_path)]
+                print(f"  Running: {' '.join(keygen_command)}")
+                keygen_result = subprocess.run(
+                    keygen_command,
+                    check=True,       # Throw on error
+                    capture_output=True,
+                    text=True,
+                    encoding='utf-8'
+                )
+                program_id = keygen_result.stdout.strip() # Get stdout and remove surrounding whitespace/newline
+                if program_id:
+                    print(f"  Extracted Program ID via solana-keygen: {program_id}")
+                else:
+                    print(f"  solana-keygen command returned empty output.", file=sys.stderr)
+
+            except subprocess.CalledProcessError as e:
+                print(f"Error running solana-keygen for {expected_keypair_path}:", file=sys.stderr)
+                print(f"Stderr: {e.stderr}", file=sys.stderr)
+            except FileNotFoundError:
+                print("Error: 'solana-keygen' command not found. Is the Solana toolchain installed and in PATH?", file=sys.stderr)
+            except Exception as e:
+                print(f"Error extracting Program ID via solana-keygen for {expected_keypair_path}: {e}", file=sys.stderr)
+        else:
+            print(f"  Keypair file NOT found: {expected_keypair_path}. Cannot determine Program ID.", file=sys.stderr)
 
     except subprocess.CalledProcessError as e:
         print(f"Error building benchmark project in {temp_project_dir}:", file=sys.stderr)
         print(e.stderr, file=sys.stderr)
-        return None
+        return None, None
     except FileNotFoundError:
          print("Error: 'cargo-build-sbf' command not found. Is the Solana toolchain installed and in PATH?", file=sys.stderr)
-         return None
-    except Exception as e: # Catch other potential errors
+         return None, None
+    except Exception as e:
          print(f"An unexpected error occurred during build: {e}", file=sys.stderr)
-         return None
+         return None, None
+
+    # Return the found artifact path and program ID (which might be None if keypair failed)
+    return artifact_path, program_id
 
 def format_toml_dict(data):
     """ Formats a dictionary into TOML syntax (basic implementation). """
@@ -219,14 +234,20 @@ def main():
         sys.exit(1)
     print(f"Found benchmarked crate package name: {actual_benched_crate_name}")
 
+    # Define the list of ALL workspace dependencies that *might* be needed
+    # by the benchmarked crate OR the runner templates across any entrypoint.
+    potentially_needed_workspace_deps = ["pinocchio", "solana-program", "solana-program-error"]
+    print(f"Fetching definitions for potentially needed workspace deps: {potentially_needed_workspace_deps}")
+
+    # Get the definitions for ALL these potential dependencies from eisodos/Cargo.toml
+    complete_workspace_deps_block = get_workspace_dependencies_block(potentially_needed_workspace_deps)
+    if not complete_workspace_deps_block:
+        print(f"Error: Failed to get definitions for workspace dependencies: {potentially_needed_workspace_deps}", file=sys.stderr)
+        sys.exit(1)
+    print(f"--- Using definitions for all potentially needed workspace dependencies:\\n{complete_workspace_deps_block}")
+
     print(f"Processing benchmarks for crate: {crate_dir}")
     print(f"Reading config: {config_path}")
-
-    # Get the necessary workspace dependency definitions (just pinocchio for now)
-    workspace_deps_block = get_workspace_dependencies_block(["pinocchio"]) 
-    if not workspace_deps_block:
-        sys.exit(1) # Error message printed in helper function
-    print(f"Using workspace dependencies block:\n{workspace_deps_block}")
 
     try:
         # Read the file content as text first
@@ -275,15 +296,17 @@ def main():
 
             # Choose template files based on entrypoint
             if entrypoint_name == "pinocchio":
-                cargo_template_path = TEMPLATES_DIR / "template.cargo.toml"
+                cargo_template_path = TEMPLATES_DIR / "template.pinocchio.cargo.toml"
                 main_template_path = TEMPLATES_DIR / "template.pinocchio.lib.rs"
-            # Add elif entrypoint_name == "solana-program": etc. here later
+            elif entrypoint_name == "solana-program":
+                cargo_template_path = TEMPLATES_DIR / "template.solana_program.cargo.toml"
+                main_template_path = TEMPLATES_DIR / "template.solana_program.lib.rs"
             else:
                 print(f"Warning: Entrypoint '{entrypoint_name}' not yet supported. Skipping.", file=sys.stderr)
                 continue
 
             if not cargo_template_path.is_file() or not main_template_path.is_file():
-                print(f"Error: Template files not found for entrypoint '{entrypoint_name}'. Skipping.", file=sys.stderr)
+                print(f"Error: Template files not found for entrypoint '{entrypoint_name}' ({cargo_template_path}, {main_template_path}). Skipping.", file=sys.stderr)
                 continue
 
             # Create unique temp directory name and paths
@@ -296,7 +319,7 @@ def main():
             shutil.rmtree(temp_project_dir, ignore_errors=True) # Clean previous run
             temp_project_dir.mkdir(parents=True)
 
-            # --- Copy the benchmarked crate source --- 
+            # --- Copy the benchmarked crate source ---
             try:
                 print(f"Copying benchmarked crate from {crate_dir} to {benched_crate_dest_path}")
                 # Ignore the target directory of the source crate to avoid recursion and large copies
@@ -306,22 +329,31 @@ def main():
                 print(f"Error copying crate source: {e}", file=sys.stderr)
                 continue
 
-            # --- Calculate relative paths --- 
+            # --- Calculate relative paths ---
             # Path from temp_project_dir (eisodos/target/bench_gen/...) to eisodos root is 3 levels up
             relative_to_eisodos_root = "../../../"
-            relative_eisodos_prog_path = f"{relative_to_eisodos_root}/programs/{entrypoint_name}"
+            # Use entrypoint_name to build the SDK path dynamically
+            relative_eisodos_sdk_path = f"{relative_to_eisodos_root}/programs/{entrypoint_name}"
             
+            # Determine SDK dependency line for the runner template
+            entrypoint_sdk_dep_line = ""
+            if entrypoint_name == "pinocchio":
+                entrypoint_sdk_dep_line = 'pinocchio = { workspace = true, default-features = false } # For runner template'
+            elif entrypoint_name == "solana-program":
+                entrypoint_sdk_dep_line = (
+                    'solana-program = { workspace = true } # For runner template\n'
+                    'solana-program-error = { workspace = true } # For direct ProgramResult import'
+                )
+
             # Prepare placeholder replacements
             replacements = {
                 "%%BENCH_ID%%": temp_dir_name,
                 "%%BENCHED_CRATE_COPY_DIR_NAME%%": BENCHED_CRATE_COPY_DIR_NAME,
-                "%%WORKSPACE_DEPENDENCIES_BLOCK%%": workspace_deps_block,
-                "%%EISODOS_PINOCCHIO_PATH%%": relative_eisodos_prog_path, 
-                # Use the ACTUAL package name for the dependency key
-                "%%CRATE_NAME%%": actual_benched_crate_name, 
+                "%%WORKSPACE_DEPENDENCIES_BLOCK%%": complete_workspace_deps_block,
+                "%%CRATE_NAME%%": actual_benched_crate_name,
                 "%%CRATE_FEATURES%%": format_features(entrypoint_features),
-                # Use the crate name from the function path for Rust 'use' statements
-                "%%RUST_IMPORT_CRATE_NAME%%": rust_import_crate_name, 
+                "%%ENTRYPOINT_SDK_DEPENDENCY_LINE%%": entrypoint_sdk_dep_line,
+                "%%RUST_IMPORT_CRATE_NAME%%": rust_import_crate_name,
                 "%%BENCHMARK_FUNCTION_MODULE%%": bench_module,
                 "%%BENCHMARK_FUNCTION_NAME%%": bench_func,
             }
@@ -330,24 +362,26 @@ def main():
             try:
                 cargo_content = cargo_template_path.read_text()
                 # Replace placeholders relevant to Cargo.toml
-                cargo_replacements = { 
-                    k: v for k, v in replacements.items() 
-                    if k not in ["%%RUST_IMPORT_CRATE_NAME%%", "%%BENCHMARK_FUNCTION_MODULE%%", "%%BENCHMARK_FUNCTION_NAME%%"]
+                cargo_replacements = {
+                    k: v for k, v in replacements.items()
+                    if k in ["%%BENCH_ID%%", "%%BENCHED_CRATE_COPY_DIR_NAME%%",
+                             "%%WORKSPACE_DEPENDENCIES_BLOCK%%", "%%CRATE_NAME%%",
+                             "%%CRATE_FEATURES%%", "%%ENTRYPOINT_SDK_DEPENDENCY_LINE%%"]
                 }
                 cargo_content = replace_placeholders(cargo_content, cargo_replacements)
                 (temp_project_dir / "Cargo.toml").write_text(cargo_content)
             except Exception as e:
                 print(f"Error processing Cargo template for {temp_dir_name}: {e}", file=sys.stderr)
-                continue 
+                continue
 
-            # Process lib.rs template 
+            # Process lib.rs template (for runner)
             try:
                 # Create the src dir for the runner *after* Cargo.toml is placed
                 temp_src_dir.mkdir()
                 main_content = main_template_path.read_text()
                 # Only replace placeholders relevant to lib.rs
-                main_replacements = { 
-                    k: v for k, v in replacements.items() 
+                main_replacements = {
+                    k: v for k, v in replacements.items()
                     if k in ["%%RUST_IMPORT_CRATE_NAME%%", "%%BENCHMARK_FUNCTION_MODULE%%", "%%BENCHMARK_FUNCTION_NAME%%"]
                 }
                 main_content = replace_placeholders(main_content, main_replacements)
@@ -358,88 +392,112 @@ def main():
                 continue 
 
             # Build the temporary project workspace
-            artifact_path = run_cargo_build(temp_project_dir)
-            if artifact_path and artifact_path.is_file():
+            artifact_path, program_id = run_cargo_build(temp_project_dir)
+
+            # Check if build was successful AND program_id was found
+            if artifact_path and artifact_path.is_file() and program_id:
                  print(f"Successfully built: {artifact_path}")
+                 print(f"Using Program ID: {program_id}")
                  built_artifacts.append(artifact_path)
                  
                  current_run_metrics = {
                      "id": bench_id,
                      "entrypoint": entrypoint_name,
+                     "features": entrypoint_features,
                      "artifact": str(artifact_path),
+                     "program_id": program_id,
                  }
 
+                 # Use the extracted program_id for execution
+                 instruction_hex = ""
                  if entrypoint_name == "pinocchio":
                      print(f"--- Executing Pinocchio benchmark for: {artifact_path} ---")
-                     program_id = "Pinocchio1111111111111111111111111111111111"
-                     instruction_hex = "00"
-                     
-                     exec_command = [
-                         "cargo", "run",
-                         "--bin", "eisodos-bench-executor",
-                         "--manifest-path", str(EISODOS_ROOT / "benchmark" / "Cargo.toml"), 
-                         "--", 
-                         str(artifact_path), program_id, instruction_hex,
-                     ]
-                     print(f"Executing: {' '.join(exec_command)}")
-                     try:
-                         exec_result = subprocess.run(
-                             exec_command, check=True, capture_output=True, text=True, encoding='utf-8'
-                         )
-                         print("--- Benchmark Executor Output ---")
-                         print(exec_result.stdout)
-                         if exec_result.stderr:
-                            print("--- Benchmark Executor Stderr ---")
-                            print(exec_result.stderr)
-                         print("--- End Executor Output ---")
+                     instruction_hex = "00" # Keep specific instruction if needed
+                 elif entrypoint_name == "solana-program":
+                     print(f"--- Executing Solana benchmark for: {artifact_path} ---")
+                     instruction_hex = "" # Use empty/minimal instruction data
+                 else:
+                     print(f"Warning: Unknown entrypoint {entrypoint_name} for execution.", file=sys.stderr)
+                     continue # Skip execution if entrypoint unknown
 
-                         # Parse metrics from executor stdout
-                         in_metrics_block = False
-                         for line in exec_result.stdout.splitlines():
-                             if line.strip() == "--- Benchmark Metrics ---":
-                                 in_metrics_block = True
-                                 continue
-                             if line.strip() == "--- End Metrics ---":
-                                 in_metrics_block = False
-                                 # Assuming one block per run for now, store and break
-                                 all_benchmark_results.append(current_run_metrics.copy()) # Add copy for this run
-                                 current_run_metrics = { # Reset for next potential block (if any)
-                                     "id": bench_id, "entrypoint": entrypoint_name, "artifact": str(artifact_path)
-                                 }
-                                 continue # Or break if only one metric block expected
-                             
-                             if in_metrics_block:
-                                 parts = line.split(":", 1)
-                                 if len(parts) == 2:
-                                     key = parts[0].strip()
-                                     value = parts[1].strip()
-                                     # Convert to int if possible
-                                     try:
-                                         current_run_metrics[key] = int(value)
-                                     except ValueError:
-                                         current_run_metrics[key] = value
+                 exec_command = [
+                     "cargo", "run",
+                     "--bin", "eisodos-bench-executor",
+                     "--manifest-path", str(EISODOS_ROOT / "benchmark" / "Cargo.toml"), 
+                     "--", 
+                     str(artifact_path), program_id, instruction_hex, # Use extracted program_id
+                 ]
+                 print(f"Executing: {' '.join(exec_command)}")
+                 try:
+                     exec_result = subprocess.run(
+                         exec_command, check=True, capture_output=True, text=True, encoding='utf-8'
+                     )
+                     print("--- Benchmark Executor Output ---")
+                     print(exec_result.stdout)
+                     if exec_result.stderr:
+                        print("--- Benchmark Executor Stderr ---")
+                        print(exec_result.stderr)
+                     print("--- End Executor Output ---")
+
+                     # Parse metrics from executor stdout
+                     in_metrics_block = False
+                     for line in exec_result.stdout.splitlines():
+                         if line.strip() == "--- Benchmark Metrics ---":
+                             in_metrics_block = True
+                             continue
+                         if line.strip() == "--- End Metrics ---":
+                             in_metrics_block = False
+                             # Assuming one block per run for now, store and break
+                             all_benchmark_results.append(current_run_metrics.copy()) # Add copy for this run
+                             current_run_metrics = { # Reset for next potential block (if any)
+                                 "id": bench_id, "entrypoint": entrypoint_name, "features": entrypoint_features, "artifact": str(artifact_path)
+                             }
+                             continue # Or break if only one metric block expected
+                         
+                         if in_metrics_block:
+                             parts = line.split(":", 1)
+                             if len(parts) == 2:
+                                 key = parts[0].strip()
+                                 value = parts[1].strip()
+                                 # Convert to int if possible
+                                 try:
+                                     current_run_metrics[key] = int(value)
+                                 except ValueError:
+                                     current_run_metrics[key] = value
                                      
-                     except subprocess.CalledProcessError as e:
-                         print(f"Error executing benchmark for {artifact_path}:", file=sys.stderr)
-                         print("Stdout:", e.stdout, file=sys.stderr)
-                         print("Stderr:", e.stderr, file=sys.stderr)
-                     except Exception as e:
-                         print(f"An unexpected error occurred during benchmark execution: {e}", file=sys.stderr)
+                 except subprocess.CalledProcessError as e:
+                     print(f"Error executing benchmark for {artifact_path}:", file=sys.stderr)
+                     print("Stdout:", e.stdout, file=sys.stderr)
+                     print("Stderr:", e.stderr, file=sys.stderr)
+                 except Exception as e:
+                     print(f"An unexpected error occurred during benchmark execution: {e}", file=sys.stderr)
+            elif artifact_path and artifact_path.is_file() and not program_id:
+                print(f"Build successful but failed to extract Program ID for {artifact_path}. Skipping execution.", file=sys.stderr)
+                # Optionally add to results with a 'failed_execution' status
             else:
                  print(f"Build failed for {temp_project_dir}")
 
     # --- Generate Markdown Report --- 
     if all_benchmark_results:
-        md_path = WORKSPACE_ROOT / "benchmark_results.md" # Place in main workspace root
+        md_path = WORKSPACE_ROOT / "benchmark_results.md"
         print(f"\nGenerating Markdown report: {md_path}")
         with open(md_path, "w", encoding="utf-8") as md_file:
             md_file.write("# Eisodos Benchmark Results\n\n")
-            # Define headers - adapt based on actual keys collected
-            headers = ["ID", "Entrypoint", "BenchmarkName", "MedianComputeUnits", "TotalComputeUnits", "InstructionsExecuted", "Artifact"]
+            # Define headers
+            headers = ["ID", "Entrypoint", "Features", "BenchmarkName", "MedianComputeUnits", "TotalComputeUnits", "InstructionsExecuted", "Program ID", "Artifact"]
             md_file.write("| " + " | ".join(headers) + " |\n")
             md_file.write("| " + " | ".join(["---"] * len(headers)) + " |\n")
             for result in all_benchmark_results:
-                row = [str(result.get(h, "N/A")) for h in headers]
+                # Format features list to string for display
+                result_display = result.copy()
+                if "Features" in result_display and isinstance(result_display["Features"], list):
+                     result_display["Features"] = ", ".join(result_display["Features"]) if result_display["Features"] else "none"
+                 # Shorten Program ID for display
+                if "program_id" in result_display:
+                     pid = result_display["program_id"]
+                     if len(pid) > 8:
+                         result_display["program_id"] = f"{pid[:4]}...{pid[-4:]}"
+                row = [str(result_display.get(h, "N/A")) for h in headers]
                 md_file.write("| " + " | ".join(row) + " |\n")
         print(f"Report generated: {md_path}")
     else:

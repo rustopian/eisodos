@@ -384,6 +384,11 @@ def main():
                     k: v for k, v in replacements.items()
                     if k in ["%%RUST_IMPORT_CRATE_NAME%%", "%%BENCHMARK_FUNCTION_MODULE%%", "%%BENCHMARK_FUNCTION_NAME%%"]
                 }
+                # --- Debug Print --- 
+                print(f"DEBUG: lib.rs replacements for {temp_dir_name}:")
+                import json # Temporary import for pretty printing
+                print(json.dumps(main_replacements, indent=2))
+                # --- End Debug Print --- 
                 main_content = replace_placeholders(main_content, main_replacements)
                 # Write to lib.rs instead of main.rs
                 (temp_src_dir / "lib.rs").write_text(main_content)
@@ -400,77 +405,117 @@ def main():
                  print(f"Using Program ID: {program_id}")
                  built_artifacts.append(artifact_path)
                  
-                 current_run_metrics = {
-                     "id": bench_id,
-                     "entrypoint": entrypoint_name,
-                     "features": entrypoint_features,
-                     "artifact": str(artifact_path),
-                     "program_id": program_id,
-                 }
-
                  # Use the extracted program_id for execution
-                 instruction_hex = ""
-                 if entrypoint_name == "pinocchio":
-                     print(f"--- Executing Pinocchio benchmark for: {artifact_path} ---")
-                     instruction_hex = "00" # Keep specific instruction if needed
-                 elif entrypoint_name == "solana-program":
-                     print(f"--- Executing Solana benchmark for: {artifact_path} ---")
-                     instruction_hex = "" # Use empty/minimal instruction data
+                 instruction_hex = "01" # Default if no account_setups
+                 num_accounts_to_provide = 0 # Default if no account_setups
+
+                 # Check for account_setups in bench_config
+                 account_setups = bench_config.get("account_setups")
+                 runs_to_perform = []
+
+                 if account_setups and isinstance(account_setups, list):
+                     for setup in account_setups:
+                         count = setup.get("count")
+                         if isinstance(count, int) and 0 < count <= 255:
+                             runs_to_perform.append({
+                                 "num_accounts": count, 
+                                 "instruction_hex": f"{count:02x}",
+                                 "run_id_suffix": f"_accounts_{count}"
+                             })
+                         else:
+                             print(f"Warning: Invalid count in account_setups for {bench_id}: {setup}. Skipping.", file=sys.stderr)
                  else:
-                     print(f"Warning: Unknown entrypoint {entrypoint_name} for execution.", file=sys.stderr)
-                     continue # Skip execution if entrypoint unknown
+                     # Legacy run or no account_setups: perform a single run with default instruction
+                     # For account-read, this means it expects 1 account based on hardcoded "01"
+                     # but executor needs to provide it.
+                     runs_to_perform.append({
+                         "num_accounts": 1, # Assume executor should provide 1 if not specified
+                         "instruction_hex": "01",
+                         "run_id_suffix": "" # No suffix for single default run
+                     })
 
-                 exec_command = [
-                     "cargo", "run",
-                     "--bin", "eisodos-bench-executor",
-                     "--manifest-path", str(EISODOS_ROOT / "benchmark" / "Cargo.toml"), 
-                     "--", 
-                     str(artifact_path), program_id, instruction_hex, # Use extracted program_id
-                 ]
-                 print(f"Executing: {' '.join(exec_command)}")
-                 try:
-                     exec_result = subprocess.run(
-                         exec_command, check=True, capture_output=True, text=True, encoding='utf-8'
-                     )
-                     print("--- Benchmark Executor Output ---")
-                     print(exec_result.stdout)
-                     if exec_result.stderr:
-                        print("--- Benchmark Executor Stderr ---")
-                        print(exec_result.stderr)
-                     print("--- End Executor Output ---")
+                 for run_params in runs_to_perform:
+                     num_accounts_to_provide = run_params["num_accounts"]
+                     instruction_hex = run_params["instruction_hex"]
+                     run_id_suffix = run_params["run_id_suffix"]
 
-                     # Parse metrics from executor stdout
-                     in_metrics_block = False
-                     for line in exec_result.stdout.splitlines():
-                         if line.strip() == "--- Benchmark Metrics ---":
-                             in_metrics_block = True
-                             continue
-                         if line.strip() == "--- End Metrics ---":
-                             in_metrics_block = False
-                             # Assuming one block per run for now, store and break
-                             all_benchmark_results.append(current_run_metrics.copy()) # Add copy for this run
-                             current_run_metrics = { # Reset for next potential block (if any)
-                                 "id": bench_id, "entrypoint": entrypoint_name, "features": entrypoint_features, "artifact": str(artifact_path)
-                             }
-                             continue # Or break if only one metric block expected
-                         
-                         if in_metrics_block:
-                             parts = line.split(":", 1)
-                             if len(parts) == 2:
-                                 key = parts[0].strip()
-                                 value = parts[1].strip()
-                                 # Convert to int if possible
-                                 try:
-                                     current_run_metrics[key] = int(value)
-                                 except ValueError:
-                                     current_run_metrics[key] = value
+                     # Update current_run_metrics for this specific run
+                     current_run_metrics = {
+                         "id": f"{bench_id}{run_id_suffix}", # Append suffix for multi-account runs
+                         "entrypoint": entrypoint_name,
+                         "features": entrypoint_features,
+                         "artifact": str(artifact_path),
+                         "program_id": program_id,
+                         "AccountsProcessed": num_accounts_to_provide # New metric
+                     }
+
+                     print(f"--- Preparing to execute for {num_accounts_to_provide} account(s), instruction: {instruction_hex} ---")
+                     if entrypoint_name == "pinocchio":
+                         print(f"--- Executing Pinocchio benchmark for: {artifact_path} ---")
+                     elif entrypoint_name == "solana-program":
+                         print(f"--- Executing Solana benchmark for: {artifact_path} ---")
+                     else:
+                         print(f"Warning: Unknown entrypoint {entrypoint_name} for execution.", file=sys.stderr)
+                         continue # Skip execution if entrypoint unknown
+
+                     exec_command = [
+                         "cargo", "run",
+                         "--bin", "eisodos-bench-executor",
+                         "--manifest-path", str(EISODOS_ROOT / "benchmark" / "Cargo.toml"), 
+                         "--", 
+                         str(artifact_path), 
+                         program_id, 
+                         # NEW: Pass num_accounts and modified instruction_hex
+                         "--num-accounts", str(num_accounts_to_provide),
+                         "--instruction-data", instruction_hex, 
+                     ]
+                     print(f"Executing: {' '.join(exec_command)}")
+                     try:
+                         exec_result = subprocess.run(
+                             exec_command, check=True, capture_output=True, text=True, encoding='utf-8'
+                         )
+                         print("--- Benchmark Executor Output ---")
+                         print(exec_result.stdout)
+                         if exec_result.stderr:
+                            print("--- Benchmark Executor Stderr ---")
+                            print(exec_result.stderr)
+                         print("--- End Executor Output ---")
+
+                         # Parse metrics from executor stdout
+                         in_metrics_block = False
+                         for line in exec_result.stdout.splitlines():
+                             if line.strip() == "--- Benchmark Metrics ---":
+                                 in_metrics_block = True
+                                 continue
+                             if line.strip() == "--- End Metrics ---":
+                                 in_metrics_block = False
+                                 # Assuming one block per run for now, store and break
+                                 all_benchmark_results.append(current_run_metrics.copy()) # Add copy for this run
+                                 current_run_metrics = { # Reset for next potential block (if any)
+                                     "id": f"{bench_id}{run_id_suffix}",
+                                     "entrypoint": entrypoint_name,
+                                     "features": entrypoint_features,
+                                     "artifact": str(artifact_path)
+                                 }
+                                 continue # Or break if only one metric block expected
+                             
+                             if in_metrics_block:
+                                 parts = line.split(":", 1)
+                                 if len(parts) == 2:
+                                     key = parts[0].strip()
+                                     value = parts[1].strip()
+                                     # Convert to int if possible
+                                     try:
+                                         current_run_metrics[key] = int(value)
+                                     except ValueError:
+                                         current_run_metrics[key] = value
                                      
-                 except subprocess.CalledProcessError as e:
-                     print(f"Error executing benchmark for {artifact_path}:", file=sys.stderr)
-                     print("Stdout:", e.stdout, file=sys.stderr)
-                     print("Stderr:", e.stderr, file=sys.stderr)
-                 except Exception as e:
-                     print(f"An unexpected error occurred during benchmark execution: {e}", file=sys.stderr)
+                     except subprocess.CalledProcessError as e:
+                         print(f"Error executing benchmark for {artifact_path}:", file=sys.stderr)
+                         print("Stdout:", e.stdout, file=sys.stderr)
+                         print("Stderr:", e.stderr, file=sys.stderr)
+                     except Exception as e:
+                         print(f"An unexpected error occurred during benchmark execution: {e}", file=sys.stderr)
             elif artifact_path and artifact_path.is_file() and not program_id:
                 print(f"Build successful but failed to extract Program ID for {artifact_path}. Skipping execution.", file=sys.stderr)
                 # Optionally add to results with a 'failed_execution' status
@@ -483,8 +528,8 @@ def main():
         print(f"\nGenerating Markdown report: {md_path}")
         with open(md_path, "w", encoding="utf-8") as md_file:
             md_file.write("# Eisodos Benchmark Results\n\n")
-            # Define headers
-            headers = ["ID", "Entrypoint", "Features", "BenchmarkName", "MedianComputeUnits", "TotalComputeUnits", "InstructionsExecuted", "Program ID", "Artifact"]
+            # Define headers - Added "Accounts Processed"
+            headers = ["ID", "Entrypoint", "Features", "AccountsProcessed", "BenchmarkName", "MedianComputeUnits", "TotalComputeUnits", "InstructionsExecuted", "Program ID", "Artifact"]
             md_file.write("| " + " | ".join(headers) + " |\n")
             md_file.write("| " + " | ".join(["---"] * len(headers)) + " |\n")
             for result in all_benchmark_results:

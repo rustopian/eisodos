@@ -19,7 +19,7 @@ crate-type = ["cdylib"] # Compile as a dynamic system library for SBF
 [dependencies]
 # Depend on the benchmarked crate (copied into temp dir).
 # Enable the "provide-handlers" feature needed for SBF build of this no_std crate.
-%%CRATE_NAME%% = { path = "./%%BENCHED_CRATE_COPY_DIR_NAME%%", features = ["provide-handlers"] }
+%%CRATE_NAME%% = { path = "./%%BENCHED_CRATE_COPY_DIR_NAME%%", features = [ %%CRATE_FEATURES%% ] }
 
 # Depend on the Pinocchio SDK needed by this runner's code.
 # Use no default features to ensure no_std compatibility.

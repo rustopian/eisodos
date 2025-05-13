@@ -1,8 +1,8 @@
 [[benchmark]]
 id = "ping_example_pinocchio"
-function = "ping_crate::benchmarking::ping_for_benchmark"
+function = "ping_crate::instruction::process_instruction"
 entrypoints = ["pinocchio", "solana-program"]
 features = [
-    { entrypoint = "pinocchio", features = [] },
+    { entrypoint = "pinocchio", features = ["no_std"] },
     { entrypoint = "solana-program", features = ["std"] }
 ]

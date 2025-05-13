@@ -9,7 +9,7 @@ use pinocchio::{
 };
 
 // Import the function to be benchmarked
-use %%RUST_IMPORT_CRATE_NAME%%::%%BENCHMARK_FUNCTION_MODULE%%::%%BENCHMARK_FUNCTION_NAME%%;
+use %%RUST_IMPORT_CRATE_NAME%%::%%BENCHMARK_FUNCTION_MODULE%%::%%BENCHMARK_FUNCTION_NAME%% as benchmark_function_to_call;
 
 // Pinocchio entrypoint setup
 program_entrypoint!(process_instruction);
@@ -28,9 +28,10 @@ pub fn process_instruction(
     // TODO: Add logic here to load/deserialize input_data if specified in the config
     // For ping, no input data is needed.
 
-    // Call the benchmarked function
-    %%BENCHMARK_FUNCTION_NAME%%()
+    // Call the benchmarked function (using the alias)
+    benchmark_function_to_call(_program_id, _accounts, _instruction_data)?;
 
+    Ok(())
     // We might want to serialize/log output here if needed in the future
 }
 

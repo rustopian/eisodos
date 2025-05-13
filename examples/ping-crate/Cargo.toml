@@ -8,6 +8,7 @@ publish = false
 default = []
 # Use "std" feature for solana-program based builds
 std = ["solana-program", "solana-program-error"]
+no_std = ["pinocchio"]
 # "provide-handlers" needed for SBF no_std library build process
 provide-handlers = []
 
@@ -17,12 +18,8 @@ crate-type = ["cdylib", "lib"] # Keep existing types
 
 [dependencies]
 # Use pinocchio (no defaults) for no_std builds
-pinocchio = { workspace = true, default-features = false }
+pinocchio = { workspace = true, optional = true }
 
 # Solana dependencies are optional, activated by "std" feature
 solana-program = { workspace = true, optional = true }
 solana-program-error = { workspace = true, optional = true }
-
-# Other dependencies if needed...
-
-# Library crate for benchmarking 

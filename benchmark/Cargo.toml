@@ -18,6 +18,7 @@ mollusk-svm = "0.1.5"
 mollusk-svm-bencher = "0.1.5"
 solana-sdk = "2.2" # For Pubkey, Instruction, etc. used by mollusk-svm-bencher
 hex = "0.4"
+clap = { version = "4.5.4", features = ["derive"] }
 # solana-program might be needed if executor constructs more complex accounts/instructions
 # solana-program = "2.2"
 

@@ -1,99 +1,169 @@
-use std::{path::PathBuf, process::exit, str::FromStr};
-use mollusk_svm_bencher::MolluskComputeUnitBencher;
-use mollusk_svm::Mollusk;
+use clap::Parser;
+use mollusk_svm_bencher::api::{BencherContext, BencherParameters, SVMExecutionResults};
 use solana_sdk::{
-    instruction::Instruction,
+    account::AccountSharedData,
+    instruction::AccountMeta,
     pubkey::Pubkey,
 };
+use std::fs;
+use std::str::FromStr;
 
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
 struct Args {
-    so_path: PathBuf,
-    program_id: Pubkey,
-    instruction_data: Vec<u8>,
-}
+    #[clap()] // Positional argument for program_path
+    program_path: String,
+    #[clap()] // Positional argument for program_id
+    program_id: String,
 
-fn parse_args() -> Result<Args, String> {
-    let mut args = std::env::args().skip(1); 
+    #[clap(long, default_value_t = 0, help = "Number of accounts to create and pass to the program")]
+    num_accounts: u8,
 
-    let so_path_str = args.next().ok_or_else(|| "Missing <so_path> argument".to_string())?;
-    let program_id_str = args.next().ok_or_else(|| "Missing <program_id> argument".to_string())?;
-    let instruction_hex_str = args.next().ok_or_else(|| "Missing <instruction_hex> argument".to_string())?;
+    #[clap(long, default_value_t = 1024, help = "Initial data size for each created account (bytes)")]
+    initial_account_data_size: usize,
 
-    let so_path = PathBuf::from(so_path_str.clone());
-    if !so_path.is_file() {
-        return Err(format!("SO file not found: {}", so_path_str));
-    }
-
-    let program_id = Pubkey::from_str(&program_id_str)
-        .map_err(|e| format!("Invalid program_id: {}. Error: {}", program_id_str, e))?;
-    
-    let instruction_data = match hex::decode(&instruction_hex_str) {
-        Ok(data) => data,
-        Err(e) => return Err(format!("Invalid hex for instruction_data: '{}'. Error: {}", instruction_hex_str, e)),
-    };
-
-    Ok(Args {
-        so_path,
-        program_id,
-        instruction_data,
-    })
+    // Changed from positional to long arg to match --num-accounts style
+    #[clap(long, default_value = "", help = "Hex-encoded instruction data")]
+    instruction_data: String,
 }
 
 fn main() {
-    let args = match parse_args() {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("Argument parsing error: {}", e);
-            eprintln!("Usage: eisodos-bench-executor <so_path> <program_id> <instruction_hex>");
-            exit(1);
-        }
-    };
+    let args = Args::parse();
 
     println!(
-        "Executor: SO: {:?}, ProgramID: {}, Instruction (hex): {}",
-        args.so_path, args.program_id, hex::encode(&args.instruction_data)
+        "Executor: SO: \"{}\", ProgramID: {}, Instruction (hex): {}",
+        args.program_path,
+        args.program_id,
+        args.instruction_data
     );
-    
-    if let Some(parent_dir) = args.so_path.parent() {
-        if let Some(parent_dir_str) = parent_dir.to_str() {
-            std::env::set_var("SBF_OUT_DIR", parent_dir_str);
-            println!("Executor: Set SBF_OUT_DIR to: {}", parent_dir_str);
-        } else {
-            eprintln!("Executor Error: Could not convert .so parent directory to string.");
-            exit(1);
+
+    // Set SBF_OUT_DIR for the bencher, assuming it might be needed by underlying tools
+    // The actual path might need to be more dynamic or configurable if benchmarks are run in parallel
+    // For now, using the parent of the SO file's deploy directory.
+    let so_path = std::path::Path::new(&args.program_path);
+    if let Some(parent_dir) = so_path.parent() { // target/deploy
+        if let Some(target_dir) = parent_dir.parent() { // target
+             if let Some(program_dir) = target_dir.parent() { // bench_gen/some_bench_run_dir
+                let sbf_out_dir = program_dir.join("target").join("deploy");
+                std::env::set_var("SBF_OUT_DIR", sbf_out_dir.to_str().unwrap_or("."));
+                println!("Executor: Set SBF_OUT_DIR to: {}", sbf_out_dir.display());
+            }
         }
-    } else {
-        eprintln!("Executor Error: Could not get parent directory of .so file.");
-        exit(1);
     }
-    
-    let program_crate_name = args.so_path.file_stem().unwrap_or_default().to_str().unwrap_or_default();
-    if program_crate_name.is_empty() {
-        eprintln!("Executor Error: Could not determine program crate name from .so file stem.");
-        exit(1);
+
+    let program_id_pubkey = Pubkey::from_str(&args.program_id).expect("Invalid program ID");
+    let elf_bytes = fs::read(&args.program_path).expect("Failed to read SBF program file");
+    let instruction_data_bytes = hex::decode(&args.instruction_data).expect("Failed to decode instruction data from hex");
+
+    let mut accounts_for_svm: Vec<AccountSharedData> = Vec::new();
+    let mut account_metas_for_tx: Vec<AccountMeta> = Vec::new();
+
+    if args.num_accounts > 0 {
+        println!(
+            "Executor: Setting up {} accounts, each with {} bytes of data.",
+            args.num_accounts,
+            args.initial_account_data_size
+        );
+        for i in 0..args.num_accounts {
+            // Create deterministic-enough pubkeys for benchmarking context
+            // This is simple; a more robust approach might derive from program_id + index
+            let mut pk_bytes = program_id_pubkey.to_bytes();
+            pk_bytes[0] = pk_bytes[0].wrapping_add(i + 1); // Ensure some variation
+            let account_pubkey = Pubkey::new_from_array(pk_bytes);
+
+            let mut account = AccountSharedData::new(
+                1_000_000_000, // Lamports (rent-exempt for typical sizes)
+                args.initial_account_data_size,
+                &program_id_pubkey, // Owner is the benchmarked program
+            );
+            // Initialize account data with a simple pattern (e.g., sequence of bytes)
+            let mut data_vec = vec![0u8; args.initial_account_data_size];
+            if !data_vec.is_empty() {
+                for (idx, byte) in data_vec.iter_mut().enumerate() {
+                    *byte = (idx % 256) as u8;
+                }
+                // Use direct field assignment for account data
+                account.data = data_vec;
+            }
+            
+            accounts_for_svm.push(account.clone());
+            
+            account_metas_for_tx.push(AccountMeta {
+                pubkey: account_pubkey,
+                is_signer: false, // Benchmarked programs usually don't require signers
+                is_writable: true,  // Assume writable for benchmarks that modify accounts
+            });
+        }
     }
-    println!("Executor: Using program crate name for Mollusk: {}", program_crate_name);
 
-    // Initialize logger (optional, but good for seeing Mollusk/SVM logs)
-    // solana_logger::setup_with(""); // Removed - Let MolluskComputeUnitBencher handle its own output
+    // Determine the program name for Mollusk, typically from the SO file name
+    let crate_name_for_mollusk = so_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown_program")
+        .to_string();
+    println!("Executor: Using program crate name for Mollusk: {}", crate_name_for_mollusk);
 
-    let mollusk = Mollusk::new(&args.program_id, program_crate_name);
-    let mut bencher = MolluskComputeUnitBencher::new(mollusk)
-        .must_pass(true); 
-
-    let instruction = Instruction {
-        program_id: args.program_id,
-        accounts: vec![], 
-        data: args.instruction_data,
+    let bencher_params = BencherParameters {
+        target_cu: Some(1_000_000), // Default target CU, can be adjusted
+        ..Default::default()
     };
 
-    // Create a longer-lived binding for the empty accounts vector
-    let empty_accounts_for_bench = Vec::new(); 
-    bencher = bencher.bench(("benchmark_run", &instruction, &empty_accounts_for_bench));
-
     println!("Executor: Executing benchmark via MolluskComputeUnitBencher...");
-    bencher.execute(); // This method prints the results to stdout.
 
-    // The Python script will capture and display/parse the stdout from bencher.execute().
-    println!("Executor: Benchmark execution completed (results printed to stdout).");
+    // Note: The way accounts are passed to mollusk_svm_bencher might need adjustments.
+    // It expects `loaded_accounts: &[(&Pubkey, &RefCell<AccountSharedData>)]`
+    // We need to adapt our `accounts_for_svm` and `account_metas_for_tx` to this.
+    // This is a simplified conceptual representation.
+    // The actual setup for TransactionContext and passing accounts to `run_program_with_unified_context`
+    // will be more involved.
+
+    // Placeholder for actual account setup for Mollusk. 
+    // This part is complex and depends on how Mollusk wants its TransactionContext and accounts.
+    // The following is a conceptual sketch and WILL LIKELY NOT COMPILE as is without
+    // further refinement based on mollusk-svm-bencher's exact API for account setup.
+
+    // Create the RefCell wrappers and pubkey references needed by mollusk
+    use std::cell::RefCell;
+    let mut accounts_ref_cells: Vec<RefCell<AccountSharedData>> = accounts_for_svm
+        .into_iter()
+        .map(RefCell::new)
+        .collect();
+
+    let mut loaded_accounts_for_mollusk: Vec<(&Pubkey, &RefCell<AccountSharedData>)> = Vec::new();
+    for i in 0..args.num_accounts as usize {
+        loaded_accounts_for_mollusk.push((
+            &account_metas_for_tx[i].pubkey, 
+            &accounts_ref_cells[i]
+        ));
+    }
+    
+    let bencher_context = BencherContext {
+        program_id: program_id_pubkey,
+        elf_bytes: &elf_bytes, // Pass as slice
+        instruction_data: &instruction_data_bytes, // Pass as slice
+        accounts: &loaded_accounts_for_mollusk, // Pass as slice of tuples
+        // account_metas needs to be correctly set for the TransactionContext if mollusk doesn't derive it.
+        // This might involve creating a Solana Transaction and extracting its message.
+    };
+
+    match mollusk_svm_bencher::api::run_program_with_unified_context(&bencher_context, Some(&bencher_params), true) {
+        Ok(execution_results) => {
+            println!("Executor: Benchmark execution completed (results printed to stdout).");
+            // The metrics printing logic from the script is now largely here.
+            println!("--- Benchmark Metrics ---");
+            // Use the crate name derived earlier for consistent naming
+            println!("BenchmarkName: {}{}", crate_name_for_mollusk, 
+                if args.num_accounts > 0 { format!("_accounts_{}", args.num_accounts) } else { "".to_string() });
+            println!("MedianComputeUnits: {}", execution_results.median_cu);
+            println!("TotalComputeUnits: {}", execution_results.total_cu);
+            println!("InstructionsExecuted: {}", execution_results.executed_units); // Assuming this maps to instructions
+            // Add other relevant metrics from execution_results if available
+            println!("--- End Metrics ---");
+        }
+        Err(e) => {
+            eprintln!("Executor: Benchmark execution failed: {:?}", e);
+            std::process::exit(1);
+        }
+    }
 } 

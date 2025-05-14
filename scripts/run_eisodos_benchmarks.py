@@ -5,8 +5,8 @@ import shutil
 import subprocess
 import sys
 import os
-import json # Import json module
-import time # Import time for a small delay
+import json
+import time
 
 # --- Constants ---
 EISODOS_ROOT = pathlib.Path(__file__).parent.parent.resolve()
@@ -244,7 +244,7 @@ def main():
     if not complete_workspace_deps_block:
         print(f"Error: Failed to get definitions for workspace dependencies: {potentially_needed_workspace_deps}", file=sys.stderr)
         sys.exit(1)
-    print(f"--- Using definitions for all potentially needed workspace dependencies:\\n{complete_workspace_deps_block}")
+    print(f"--- Using definitions for all potentially needed workspace dependencies:\n{complete_workspace_deps_block}")
 
     print(f"Processing benchmarks for crate: {crate_dir}")
     print(f"Reading config: {config_path}")
@@ -384,13 +384,7 @@ def main():
                     k: v for k, v in replacements.items()
                     if k in ["%%RUST_IMPORT_CRATE_NAME%%", "%%BENCHMARK_FUNCTION_MODULE%%", "%%BENCHMARK_FUNCTION_NAME%%"]
                 }
-                # --- Debug Print --- 
-                print(f"DEBUG: lib.rs replacements for {temp_dir_name}:")
-                import json # Temporary import for pretty printing
-                print(json.dumps(main_replacements, indent=2))
-                # --- End Debug Print --- 
                 main_content = replace_placeholders(main_content, main_replacements)
-                # Write to lib.rs instead of main.rs
                 (temp_src_dir / "lib.rs").write_text(main_content)
             except Exception as e:
                 print(f"Error processing Rust template for {temp_dir_name}: {e}", file=sys.stderr)
@@ -405,51 +399,91 @@ def main():
                  print(f"Using Program ID: {program_id}")
                  built_artifacts.append(artifact_path)
                  
-                 # Use the extracted program_id for execution
-                 instruction_hex = "01" # Default if no account_setups
-                 num_accounts_to_provide = 0 # Default if no account_setups
-
                  # Check for account_setups in bench_config
-                 account_setups = bench_config.get("account_setups")
+                 instruction_payload = bench_config.get("instruction_payload") # NEW: Get instruction_payload
                  runs_to_perform = []
 
-                 if account_setups and isinstance(account_setups, list):
-                     for setup in account_setups:
-                         count = setup.get("count")
-                         if isinstance(count, int) and 0 < count <= 255:
-                             runs_to_perform.append({
-                                 "num_accounts": count, 
-                                 "instruction_hex": f"{count:02x}",
-                                 "run_id_suffix": f"_accounts_{count}"
-                             })
-                         else:
-                             print(f"Warning: Invalid count in account_setups for {bench_id}: {setup}. Skipping.", file=sys.stderr)
-                 else:
-                     # Legacy run or no account_setups: perform a single run with default instruction
-                     # For account-read, this means it expects 1 account based on hardcoded "01"
-                     # but executor needs to provide it.
-                     runs_to_perform.append({
-                         "num_accounts": 1, # Assume executor should provide 1 if not specified
-                         "instruction_hex": "01",
-                         "run_id_suffix": "" # No suffix for single default run
-                     })
+                 # NEW: Helper function to serialize instruction_payload
+                 def serialize_payload(payload, bench_id_for_warning):
+                    if not payload or not isinstance(payload, dict):
+                        print(f"Warning: instruction_payload for {bench_id_for_warning} is malformed. Using default byte.", file=sys.stderr)
+                        return b"\xff" 
+
+                    tag = payload.get("tag")
+                    if tag is None: 
+                        print(f"Warning: instruction_payload missing 'tag' for {bench_id_for_warning}. Using default byte.", file=sys.stderr)
+                        return b"\xff"
+                    
+                    data_bytes = bytearray()
+                    data_bytes.append(int(tag)) 
+
+                    if "amount" in payload: # For Transfer
+                        amount = payload.get("amount", 0)
+                        data_bytes.extend(int(amount).to_bytes(8, byteorder='little'))
+                    elif "lamports" in payload and "space" in payload: # For CreateAccount
+                        lamports = payload.get("lamports", 0)
+                        space = payload.get("space", 0)
+                        data_bytes.extend(int(lamports).to_bytes(8, byteorder='little'))
+                        data_bytes.extend(int(space).to_bytes(8, byteorder='little'))
+                    # Add other payload types as needed
+                    
+                    return bytes(data_bytes)
+
+                 if instruction_payload:
+                    # If instruction_payload is defined, it dictates the instruction data
+                    # and implies a single run configuration for that specific payload.
+                    num_accounts_for_payload_run = 1 # Default, can be overridden
+                    # Determine num_accounts based on benchmark type hint in id
+                    if "create_account" in bench_id:
+                        num_accounts_for_payload_run = 3 # Funder, New Account, System Program
+                    elif "transfer" in bench_id:
+                        num_accounts_for_payload_run = 3 # Source, Destination, System Program
+                    elif "log" in bench_id: # Log bench doesn't strictly need accounts for its operation
+                        num_accounts_for_payload_run = 0 
+                    # For account-read, it might use instruction_payload if we extend it, or stick to account_setups
+                    
+                    serialized_data = serialize_payload(instruction_payload, bench_id)
+                    runs_to_perform.append({
+                        "num_accounts": num_accounts_for_payload_run, 
+                        "instruction_hex": serialized_data.hex(),
+                        "run_id_suffix": "_custom_payload" 
+                    })
+                 else: # Fallback to account_setups or default if no instruction_payload
+                    account_setups = bench_config.get("account_setups")
+                    if account_setups and isinstance(account_setups, list):
+                        for setup in account_setups:
+                            count = setup.get("count")
+                            if isinstance(count, int) and 0 < count <= 255:
+                                runs_to_perform.append({
+                                    "num_accounts": count, 
+                                    "instruction_hex": f"{count:02x}",
+                                    "run_id_suffix": f"_accounts_{count}"
+                                })
+                            else:
+                                print(f"Warning: Invalid count in account_setups for {bench_id}: {setup}. Skipping.", file=sys.stderr)
+                    else:
+                        # Default run if neither instruction_payload nor account_setups are present
+                        runs_to_perform.append({
+                            "num_accounts": 1, 
+                            "instruction_hex": "01", # Default instruction_hex (e.g. for simple ping or old account-read)
+                            "run_id_suffix": "_default_run"
+                        })
 
                  for run_params in runs_to_perform:
-                     num_accounts_to_provide = run_params["num_accounts"]
+                     num_accounts_to_provide = run_params["num_accounts"] # This is now more of a hint or legacy value
                      instruction_hex = run_params["instruction_hex"]
-                     run_id_suffix = run_params["run_id_suffix"]
 
                      # Update current_run_metrics for this specific run
                      current_run_metrics = {
-                         "id": f"{bench_id}{run_id_suffix}", # Append suffix for multi-account runs
+                         "id": f"{bench_id}{run_params['run_id_suffix']}", 
                          "entrypoint": entrypoint_name,
                          "features": entrypoint_features,
                          "artifact": str(artifact_path),
                          "program_id": program_id,
-                         "AccountsProcessed": num_accounts_to_provide # New metric
+                         "AccountsProcessed": num_accounts_to_provide # Metric for accounts processed by program
                      }
 
-                     print(f"--- Preparing to execute for {num_accounts_to_provide} account(s), instruction: {instruction_hex} ---")
+                     print(f"--- Preparing to execute for {num_accounts_to_provide} account(s), instruction_hex: {instruction_hex} ---")
                      if entrypoint_name == "pinocchio":
                          print(f"--- Executing Pinocchio benchmark for: {artifact_path} ---")
                      elif entrypoint_name == "solana-program":
@@ -458,26 +492,57 @@ def main():
                          print(f"Warning: Unknown entrypoint {entrypoint_name} for execution.", file=sys.stderr)
                          continue # Skip execution if entrypoint unknown
 
+                     # NEW: Construct account_spec arguments for the executor
+                     account_spec_args = []
+                     if instruction_payload: 
+                         if "create_account" in bench_id: 
+                             account_spec_args.extend([
+                                 "--account-spec", "funder:funder_key:true:true:10000000000:0:system",
+                                 "--account-spec", f"new_account:new_account_key:true:true:0:0:system",
+                                 "--account-spec", "system_program:system_key:false:false:0:0:system"
+                             ])
+                         elif "transfer" in bench_id:
+                             account_spec_args.extend([
+                                 "--account-spec", "source:source_key:true:true:20000000000:0:system", # Ensure enough lamports
+                                 "--account-spec", "destination:dest_key:false:true:0:0:system",
+                                 "--account-spec", "system_program:system_key:false:false:0:0:system"
+                             ])
+                         elif "log" in bench_id:
+                             pass # Log typically needs no accounts for the instruction itself
+                         # Add other specific setups as new benchmark types are added
+                     elif account_setups: # Logic for account_setups (e.g. account-read)
+                         # The executor has a fallback for num_accounts if instruction_data is the old default "01"
+                         # For more complex account_setups not fitting the new spec, this part might need adjustment
+                         # or those benchmarks refactored to use instruction_payload and account_specs.
+                         # For now, we'll rely on the executor's fallback for simple num_account cases.
+                         pass # No specific account_spec_args, executor will use its default for num_accounts
+                     else: # Default run (e.g. ping, or simple log with default instruction)
+                         pass # No specific account_spec_args, executor handles zero/default accounts
+
                      exec_command = [
                          "cargo", "run",
-                         "--bin", "eisodos-bench-executor",
-                         "--manifest-path", str(EISODOS_ROOT / "benchmark" / "Cargo.toml"), 
+                         "-p", "eisodos", # Specify the package name from benchmark/Cargo.toml
+                         "--bin", "eisodos-bench-executor", 
                          "--", 
                          str(artifact_path), 
                          program_id, 
-                         # NEW: Pass num_accounts and modified instruction_hex
-                         "--num-accounts", str(num_accounts_to_provide),
                          "--instruction-data", instruction_hex, 
-                     ]
+                     ] + account_spec_args
+
                      print(f"Executing: {' '.join(exec_command)}")
                      try:
                          exec_result = subprocess.run(
-                             exec_command, check=True, capture_output=True, text=True, encoding='utf-8'
+                             exec_command, 
+                             cwd=EISODOS_ROOT, # Ensure command is run from workspace root
+                             check=True, 
+                             capture_output=True, 
+                             text=True, 
+                             encoding='utf-8'
                          )
                          print("--- Benchmark Executor Output ---")
                          print(exec_result.stdout)
                          if exec_result.stderr:
-                            print("--- Benchmark Executor Stderr ---")
+                            print("--- Benchmark Executor Stderr (for metrics check) ---")
                             print(exec_result.stderr)
                          print("--- End Executor Output ---")
 
@@ -492,7 +557,7 @@ def main():
                                  # Assuming one block per run for now, store and break
                                  all_benchmark_results.append(current_run_metrics.copy()) # Add copy for this run
                                  current_run_metrics = { # Reset for next potential block (if any)
-                                     "id": f"{bench_id}{run_id_suffix}",
+                                     "id": f"{bench_id}{run_params['run_id_suffix']}",
                                      "entrypoint": entrypoint_name,
                                      "features": entrypoint_features,
                                      "artifact": str(artifact_path)

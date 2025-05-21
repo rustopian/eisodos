@@ -35,13 +35,17 @@ const REQUIRED_INSTRUCTION_DATA_LEN: usize = 17;
 
 #[cfg(feature = "std")]
 pub mod solana_benches {
-    use solana_program::{
-        account_info::{next_account_info, AccountInfo},
-        entrypoint::ProgramResult,
-        program::invoke,
-        pubkey::Pubkey,
-        system_instruction,
-        system_program,
+    use {
+        solana_account_info::{AccountInfo, next_account_info},
+        solana_entrypoint::ProgramResult,
+        solana_msg,
+        solana_invoke,
+        solana_program_error::ProgramError,
+        solana_pubkey::Pubkey,
+        solana_program::{
+            system_instruction,
+            system_program,
+        },
     };
     use super::{CREATE_ACCOUNT_INSTRUCTION_TAG, LAMPORTS_OFFSET, SPACE_OFFSET, REQUIRED_INSTRUCTION_DATA_LEN};
 

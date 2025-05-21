@@ -19,13 +19,10 @@ nostd_panic_handler!();
 
 // === std specific setup ===
 #[cfg(feature = "std")]
-use solana_program::{ 
-    // Note: Using entrypoint_deprecated::ProgramResult for std compatibility
-    // if the templates/executor expect that specific type.
-    // Adjust if necessary based on how std results are handled.
-    entrypoint_deprecated::ProgramResult,
-    account_info::AccountInfo, // Use Solana's AccountInfo
-    pubkey::Pubkey,            // Use Solana's Pubkey
+use {
+    solana_account_info::AccountInfo,
+    solana_entrypoint::ProgramResult,
+    solana_pubkey::Pubkey,
 };
 // =========================
 

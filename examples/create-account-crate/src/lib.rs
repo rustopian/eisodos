@@ -42,10 +42,7 @@ pub mod solana_benches {
         solana_invoke,
         solana_program_error::ProgramError,
         solana_pubkey::Pubkey,
-        solana_program::{
-            system_instruction,
-            system_program,
-        },
+        solana_system_program::system_instruction,
     };
     use super::{CREATE_ACCOUNT_INSTRUCTION_TAG, LAMPORTS_OFFSET, SPACE_OFFSET, REQUIRED_INSTRUCTION_DATA_LEN};
 

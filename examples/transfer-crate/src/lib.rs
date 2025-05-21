@@ -37,13 +37,11 @@ pub mod solana_benches {
     use {
         solana_account_info::{AccountInfo, next_account_info},
         solana_entrypoint::ProgramResult,
+        solana_invoke,
         solana_msg,
         solana_program_error::ProgramError,
         solana_pubkey::Pubkey,
-        solana_program::{
-            program::invoke,
-            system_instruction,
-        },
+        solana_system_program::system_instruction,
     };
     use super::{TRANSFER_INSTRUCTION_TAG, AMOUNT_OFFSET, REQUIRED_INSTRUCTION_DATA_LEN};
 

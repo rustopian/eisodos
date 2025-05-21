@@ -24,10 +24,10 @@ nostd_panic_handler!();
 
 #[cfg(feature = "std")]
 pub mod solana_benches {
-    use solana_program::log::sol_log;
-    use solana_program::entrypoint::ProgramResult;
-    use solana_program::pubkey::Pubkey;
-    use solana_program::account_info::AccountInfo;
+    use solana_entrypoint::ProgramResult;
+    use solana_pubkey::Pubkey;
+    use solana_account_info::AccountInfo;
+    use solana_program::log::sol_log; // see if this crate has been pulled out
 
     pub fn run_log_bench(_program_id: &Pubkey, _accounts: &[AccountInfo], _instruction_data: &[u8]) -> ProgramResult {
         sol_log("Hello from Solana log benchmark!");

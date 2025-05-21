@@ -1,3 +1,4 @@
+[workspace]
 [package]
 name = "account-read-crate"
 version = "0.1.0"

@@ -4,6 +4,7 @@ pub mod runner;
 use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
+use solana_logger;
 use solana_program;
 // Imports needed for SlotHashes construction
 // Use correct paths for 1.18

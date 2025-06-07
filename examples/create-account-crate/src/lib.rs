@@ -33,16 +33,15 @@ const LAMPORTS_OFFSET: usize = 1;
 const SPACE_OFFSET: usize = 9;
 const REQUIRED_INSTRUCTION_DATA_LEN: usize = 17;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "solana-program")]
 pub mod solana_benches {
     use {
         solana_account_info::{AccountInfo, next_account_info},
         solana_entrypoint::ProgramResult,
-        solana_msg,
-        solana_invoke,
+        solana_cpi::invoke,
         solana_program_error::ProgramError,
         solana_pubkey::Pubkey,
-        solana_system_program::system_instruction,
+        solana_system_interface::{instruction, program},
     };
     use super::{CREATE_ACCOUNT_INSTRUCTION_TAG, LAMPORTS_OFFSET, SPACE_OFFSET, REQUIRED_INSTRUCTION_DATA_LEN};
 
@@ -52,10 +51,65 @@ pub mod solana_benches {
         instruction_data: &[u8],
     ) -> ProgramResult {
         if instruction_data.is_empty() || instruction_data[0] != CREATE_ACCOUNT_INSTRUCTION_TAG {
-            return Err(solana_program::program_error::ProgramError::InvalidInstructionData);
+            return Err(ProgramError::InvalidInstructionData);
         }
         if instruction_data.len() < REQUIRED_INSTRUCTION_DATA_LEN {
-            return Err(solana_program::program_error::ProgramError::InvalidInstructionData);
+            return Err(ProgramError::InvalidInstructionData);
+        }
+
+        let lamports = u64::from_le_bytes(instruction_data[LAMPORTS_OFFSET..SPACE_OFFSET].try_into().unwrap());
+        let space = u64::from_le_bytes(instruction_data[SPACE_OFFSET..REQUIRED_INSTRUCTION_DATA_LEN].try_into().unwrap());
+
+        let account_iter = &mut accounts.iter();
+        let funder_account = next_account_info(account_iter)?;
+        let new_account = next_account_info(account_iter)?;
+        let system_program_account = next_account_info(account_iter)?;
+        
+        if system_program_account.key != &program::ID {
+            // Optional: Add a specific error if system program ID is not as expected
+            // return Err(ProgramError::IncorrectProgramId);
+        }
+
+        invoke(
+            &instruction::create_account(
+                funder_account.key,
+                new_account.key,
+                lamports,
+                space,
+                program_id,
+            ),
+            &[
+                funder_account.clone(),
+                new_account.clone(),
+                system_program_account.clone(),
+            ],
+        )
+    }
+}
+
+#[cfg(feature = "solana-program-mono")]
+pub mod solana_program_mono_benches {
+    use solana_program::{
+        account_info::{AccountInfo, next_account_info},
+        entrypoint::ProgramResult,
+        program::invoke,
+        program_error::ProgramError,
+        pubkey::Pubkey,
+        system_instruction,
+        system_program,
+    };
+    use super::{CREATE_ACCOUNT_INSTRUCTION_TAG, LAMPORTS_OFFSET, SPACE_OFFSET, REQUIRED_INSTRUCTION_DATA_LEN};
+
+    pub fn run_create_account_bench(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        instruction_data: &[u8],
+    ) -> ProgramResult {
+        if instruction_data.is_empty() || instruction_data[0] != CREATE_ACCOUNT_INSTRUCTION_TAG {
+            return Err(ProgramError::InvalidInstructionData);
+        }
+        if instruction_data.len() < REQUIRED_INSTRUCTION_DATA_LEN {
+            return Err(ProgramError::InvalidInstructionData);
         }
 
         let lamports = u64::from_le_bytes(instruction_data[LAMPORTS_OFFSET..SPACE_OFFSET].try_into().unwrap());

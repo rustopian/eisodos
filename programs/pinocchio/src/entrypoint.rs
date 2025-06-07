@@ -8,8 +8,7 @@ use {
             process_slot_hashes_get_hash_interpolated_unchecked,
             process_slot_hashes_position_interpolated,
             process_slot_hashes_position_interpolated_unchecked,
-            process_slot_hashes_position_naive_unchecked,
-            process_transfer,
+            process_slot_hashes_position_naive_unchecked, process_transfer,
         },
     },
     pinocchio::{

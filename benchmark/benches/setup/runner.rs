@@ -1,14 +1,14 @@
 use super::DecrementStrategy;
 use super::{
-    generate_account, generate_create_account, generate_pinocchio_slot_hashes_ix,
-    generate_sdk_slot_hashes_ix, generate_transfer, instruction_data, setup, ProgramInstruction,
-    generate_mock_slot_hashes_data
+    generate_account, generate_create_account, generate_mock_slot_hashes_data,
+    generate_pinocchio_slot_hashes_ix, generate_sdk_slot_hashes_ix, generate_transfer,
+    instruction_data, setup, ProgramInstruction,
 };
 use mollusk_svm_bencher::MolluskComputeUnitBencher;
 use solana_account::Account;
 use solana_instruction::Instruction;
+use solana_clock::Slot;
 use solana_pubkey::Pubkey;
-use solana_program::clock::Slot;
 use std::collections::HashMap;
 
 pub fn run(program_id: &Pubkey, name: &'static str) {
@@ -68,25 +68,25 @@ pub fn run(program_id: &Pubkey, name: &'static str) {
             "eisodos_pinocchio",
             ProgramInstruction::SlotHashesGetEntryUnchecked, // Placeholder, won't be used directly
             "GetEntry",
-            None // Indicates no target slot needed
+            None, // Indicates no target slot needed
         ),
         (
             "eisodos_pinocchio",
             ProgramInstruction::SlotHashesGetHashInterpolatedUnchecked, // Placeholder
             "GetHashInterpolated",
-            None // For simplicity, keep GetHash searching for slot 0 for now
+            None, // For simplicity, keep GetHash searching for slot 0 for now
         ),
         (
             "eisodos_pinocchio",
-            ProgramInstruction::SlotHashesPositionInterpolatedUnchecked { target_slot: 0 }, // Placeholder
+            ProgramInstruction::SlotHashesPositionInterpolatedUnchecked { target_slot: 0 }, /* Placeholder */
             "PositionInterpolated",
-            Some([0, 50, 100, 150, 255, 300, 350, 400, 450, 511]) // Expanded target indices
+            Some([0, 50, 100, 150, 255, 300, 350, 400, 450, 511]), // Expanded target indices
         ),
         (
             "eisodos_pinocchio",
             ProgramInstruction::SlotHashesPositionNaiveUnchecked { target_slot: 0 }, // Placeholder
             "PositionNaive",
-            Some([0, 50, 100, 150, 255, 300, 350, 400, 450, 511]) // Expanded target indices
+            Some([0, 50, 100, 150, 255, 300, 350, 400, 450, 511]), // Expanded target indices
         ),
         // Use CHECKED instructions for SDK / Nostd - Add similar structure if needed
         // ... (SDK/Nostd entries unchanged for now) ...
@@ -96,7 +96,9 @@ pub fn run(program_id: &Pubkey, name: &'static str) {
         // Generate mock data once per strategy
         let mock_entries = generate_mock_slot_hashes_data(strategy);
         let actual_len = mock_entries.len();
-        if actual_len == 0 { continue; } // Skip if no entries generated
+        if actual_len == 0 {
+            continue;
+        } // Skip if no entries generated
 
         // Define target indices relative to actual length
         let target_indices_to_get = [
@@ -112,7 +114,8 @@ pub fn run(program_id: &Pubkey, name: &'static str) {
             actual_len.saturating_sub(1), // Last
         ];
         // Deduplicate indices, necessary if actual_len is small
-        let unique_target_indices: std::collections::HashSet<usize> = target_indices_to_get.iter().cloned().collect();
+        let unique_target_indices: std::collections::HashSet<usize> =
+            target_indices_to_get.iter().cloned().collect();
 
         // Get the slot values for the unique target indices
         let target_slot_values: HashMap<usize, Slot> = unique_target_indices
@@ -123,30 +126,43 @@ pub fn run(program_id: &Pubkey, name: &'static str) {
         let generate_fn = if name == "eisodos_pinocchio" {
             generate_pinocchio_slot_hashes_ix
         } else {
-            generate_sdk_slot_hashes_ix // This would also need modification if SDK benches target specific slots
+            generate_sdk_slot_hashes_ix // This would also need modification if
+                                        // SDK benches target specific slots
         };
 
         // Filter benchmarks relevant to the current program (`name`)
-        for &(prog_name_filter, base_ix_variant, base_name, target_indices_opt) in base_slot_hash_benchmarks.iter() {
+        for &(prog_name_filter, base_ix_variant, base_name, target_indices_opt) in
+            base_slot_hash_benchmarks.iter()
+        {
             if prog_name_filter != name {
                 continue;
             }
 
             match target_indices_opt {
-                Some(_) => { // Modified: Use unique_target_indices derived from actual_len
+                Some(_) => {
+                    // Modified: Use unique_target_indices derived from actual_len
                     // Create benchmarks for specific indices
                     for &target_index in &unique_target_indices {
                         let target_slot = target_slot_values[&target_index]; // Get slot value from map
                         let ix_variant = match base_ix_variant {
-                            ProgramInstruction::SlotHashesPositionInterpolatedUnchecked { .. } => 
-                                ProgramInstruction::SlotHashesPositionInterpolatedUnchecked { target_slot },
-                            ProgramInstruction::SlotHashesPositionNaiveUnchecked { .. } => 
-                                ProgramInstruction::SlotHashesPositionNaiveUnchecked { target_slot },
-                            _ => panic!("Unexpected instruction type for indexed target")
+                            ProgramInstruction::SlotHashesPositionInterpolatedUnchecked {
+                                ..
+                            } => ProgramInstruction::SlotHashesPositionInterpolatedUnchecked {
+                                target_slot,
+                            },
+                            ProgramInstruction::SlotHashesPositionNaiveUnchecked { .. } => {
+                                ProgramInstruction::SlotHashesPositionNaiveUnchecked { target_slot }
+                            }
+                            _ => panic!("Unexpected instruction type for indexed target"),
                         };
-                        // Pass actual_len to generate_fn if it needs it (it currently doesn't, uses mock_entries.len() indirectly)
-                        let (instruction, accounts) = generate_fn(*program_id, ix_variant, strategy);
-                        let bench_id = format!("{}: {} (Idx {}) ({})", name, base_name, target_index, strategy_name);
+                        // Pass actual_len to generate_fn if it needs it (it currently doesn't, uses
+                        // mock_entries.len() indirectly)
+                        let (instruction, accounts) =
+                            generate_fn(*program_id, ix_variant, strategy);
+                        let bench_id = format!(
+                            "{}: {} (Idx {}) ({})",
+                            name, base_name, target_index, strategy_name
+                        );
                         benchmark_data.push((bench_id, instruction, accounts));
                     }
                 }

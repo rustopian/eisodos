@@ -7,13 +7,14 @@ id = "account_read_multiple"
 function = "account_read_crate::processor::process_account_reads"
 
 # List of entry points to test against
-entrypoints = ["solana-program", "pinocchio"]
+entrypoints = ["solana-program", "solana-program-mono", "pinocchio"]
 
 # Feature sets to test for each entrypoint
 # The benchmark script will pass these features when compiling account-read-crate
 # as a dependency of the temporary benchmark runner.
 features = [
-    { entrypoint = "solana-program", features = ["std"] },
+    { entrypoint = "solana-program", features = ["solana-program"] },  # Use individual solana crates without std
+    { entrypoint = "solana-program-mono", features = ["solana-program-mono"] },  # Use monolithic solana-program crate
     { entrypoint = "pinocchio", features = ["no_std"] } # Enable the explicit no_std feature
 ]
 

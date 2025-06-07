@@ -1,6 +1,6 @@
 [workspace]
 [package]
-name = "ping-crate"
+name = "slot-hashes-crate"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -11,7 +11,7 @@ crate-type = ["cdylib", "lib"] # Keep existing types
 
 [features]
 default = ["no_std"]
-solana-program = ["solana-account-info", "solana-entrypoint", "solana-pubkey"]
+solana-program = ["solana-account-info", "solana-entrypoint", "solana-program-error", "solana-pubkey"]
 solana-program-mono = ["dep:solana-program"]
 no_std = ["pinocchio"]
 provide-handlers = []
@@ -20,5 +20,6 @@ provide-handlers = []
 pinocchio = { version = "0.8", git = "https://github.com/rustopian/pinocchio.git", branch = "rustopian/slot-hashes-sysvar", optional = true }
 solana-account-info = { version = "2.2.1", default-features = false, optional = true }
 solana-entrypoint = { package = "solana-program-entrypoint", version = "2.2.1", default-features = false, optional = true }
+solana-program-error = { version = "2.2.2", default-features = false, optional = true }
 solana-pubkey = { version = "2.2.0", default-features = false, optional = true }
-solana-program = { version = "2.2.0", default-features = false, optional = true }
+solana-program = { version = "2.2.0", default-features = false, optional = true } 

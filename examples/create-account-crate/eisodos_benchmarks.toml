@@ -5,7 +5,20 @@ id = "create_account_solana"
 function = "create_account_crate::solana_benches::run_create_account_bench"
 entrypoints = ["solana-program"]
 features = [
-    { entrypoint = "solana-program", features = ["std"] }
+    { entrypoint = "solana-program", features = ["solana-program"] }
+]
+# Using dotted keys for instruction_payload
+instruction_payload.tag = 0
+instruction_payload.lamports = 500000000
+instruction_payload.space = 10
+# Accounts: Funder, NewAccount, SystemProgram (to be handled by executor setup)
+
+[[benchmark]]
+id = "create_account_solana_mono"
+function = "create_account_crate::solana_program_mono_benches::run_create_account_bench"
+entrypoints = ["solana-program-mono"]
+features = [
+    { entrypoint = "solana-program-mono", features = ["solana-program-mono"] }
 ]
 # Using dotted keys for instruction_payload
 instruction_payload.tag = 0

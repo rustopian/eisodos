@@ -1,9 +1,9 @@
 use core::cmp::Ordering;
 use solana_account_info::AccountInfo;
 use solana_cpi::invoke;
-use solana_program::msg;
-use solana_program::sysvar::Sysvar;
-use solana_program::sysvar::{self, slot_hashes as solana_slot_hashes};
+use solana_msg;
+use solana_sysvar::Sysvar;
+use solana_sysvar::{self, slot_hashes as solana_slot_hashes};
 use solana_program_error::{ProgramError, ProgramResult};
 
 #[inline(always)]
@@ -139,12 +139,10 @@ pub fn process_slot_hashes_position_midpoint(accounts: &[AccountInfo]) -> Progra
 #[cfg(test)]
 mod tests {
     use super::*;
-    use solana_program::hash::Hash;
-    use solana_program::{
-        account_info::AccountInfo,
-        pubkey::Pubkey,
-        sysvar::{self, slot_hashes::SlotHashes, Sysvar},
-    };
+    use solana_hash::Hash;
+    use solana_account_info::AccountInfo;
+    use solana_pubkey::Pubkey;
+    use solana_sysvar::{self, slot_hashes::SlotHashes, Sysvar};
     use std::{cell::RefCell, rc::Rc};
 
     // Helper to create mock account info

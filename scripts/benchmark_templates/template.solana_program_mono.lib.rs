@@ -1,10 +1,13 @@
 #![no_main]
 
-// Use the Solana Program SDK for entrypoint, base types etc.
-use solana_entrypoint;
-use solana_entrypoint::entrypoint;
-use solana_account_info::AccountInfo;
-use solana_pubkey::Pubkey;
+// Use the monolithic Solana Program SDK for entrypoint, base types etc.
+use solana_program::{
+    entrypoint,
+    entrypoint::ProgramResult,
+    account_info::AccountInfo,
+    pubkey::Pubkey,
+    program_error::ProgramError,
+};
 
 // Simple debug logging macro: compiles away in release builds.
 #[cfg(debug_assertions)]
@@ -18,11 +21,6 @@ macro_rules! debug_msg {
 macro_rules! debug_msg {
     ($($arg:tt)*) => {};
 }
-
-// Directly import ProgramResult from solana_program_error as requested
-// This assumes solana_program_error crate v2.2 exports this type.
-use solana_program_error::ProgramResult;
-use solana_program_error::ProgramError; // Also import ProgramError
 
 // Import the function to be benchmarked
 // These placeholders will be replaced by the script
@@ -42,7 +40,7 @@ pub fn process_instruction(
     _program_id: &Pubkey,
     _accounts: &[AccountInfo],
     _instruction_data: &[u8],
-) -> ProgramResult { // This now uses solana_program_error::ProgramResult
+) -> ProgramResult { // This now uses solana_program::entrypoint::ProgramResult
     debug_msg!("Executing benchmark function..."); // Example logging
 
     // TODO: Add logic here to load/deserialize input_data if specified in the config
@@ -56,13 +54,13 @@ pub fn process_instruction(
         },
         Err(e) => {
             // Assuming the error `e` from the benchmarked function is compatible
-            // with the ProgramError defined in solana_program_error
+            // with the ProgramError defined in solana_program::program_error
             // If the benchmarked function returns solana_program::ProgramResult,
             // its error type (solana_program::program_error::ProgramError) should
-            // be compatible with solana_program_error::ProgramError.
+            // be compatible with solana_program::program_error::ProgramError.
             Err(e)
         }
     }
 
     // We might want to serialize/log output here if needed in the future
-}
+} 

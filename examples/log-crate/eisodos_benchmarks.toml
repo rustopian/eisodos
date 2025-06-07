@@ -6,7 +6,16 @@ id = "log_solana"
 function = "log_crate::solana_benches::run_log_bench"
 entrypoints = ["solana-program"]
 features = [
-    { entrypoint = "solana-program", features = ["std"] }
+    { entrypoint = "solana-program", features = ["solana-program"] }
+]
+# No specific input_data or account_setups needed for basic log test
+
+[[benchmark]]
+id = "log_solana_mono"
+function = "log_crate::solana_program_mono_benches::run_log_bench"
+entrypoints = ["solana-program-mono"]
+features = [
+    { entrypoint = "solana-program-mono", features = ["solana-program-mono"] }
 ]
 # No specific input_data or account_setups needed for basic log test
 

@@ -8,12 +8,12 @@ use solana_logger;
 use solana_program;
 // Imports needed for SlotHashes construction
 // Use correct paths for 1.18
-use solana_program::clock::Slot;
-use solana_program::hash::Hash;
+use solana_clock::Slot;
+use solana_hash::Hash;
 // SlotHash is a type alias (Slot, Hash)
-use solana_program::slot_hashes::SlotHash;
+use solana_slot_hashes::SlotHash;
 // Use Sysvar ID from solana_program
-use solana_program::sysvar::ID as SYSVAR_PROGRAM_ID;
+use solana_sysvar::ID as SYSVAR_PROGRAM_ID;
 use solana_pubkey::Pubkey;
 use std::vec;
 
@@ -60,8 +60,8 @@ pub enum ProgramInstruction {
                                 * search) */
     SlotHashesPositionChecked, // ID 7
     // --- SlotHashes (Unsafe/Unchecked Path - For Pinocchio Benchmarking) ---
-    SlotHashesGetEntryUnchecked,             // ID 8
-    SlotHashesGetHashInterpolatedUnchecked,  // ID 9
+    SlotHashesGetEntryUnchecked,                                   // ID 8
+    SlotHashesGetHashInterpolatedUnchecked,                        // ID 9
     SlotHashesPositionInterpolatedUnchecked { target_slot: Slot }, // ID 10 <- Takes Slot
     SlotHashesPositionNaiveUnchecked { target_slot: Slot },        // ID 11 <- Takes Slot
 }
@@ -140,7 +140,7 @@ fn generate_mock_slot_hashes_data(strategy: DecrementStrategy) -> Vec<(u64, [u8;
                 }
             }
         };
-        
+
         // Calculate next slot and check for saturation/no change
         let next_slot = current_slot.saturating_sub(decrement);
         if next_slot == current_slot {
@@ -309,14 +309,14 @@ fn generate_sdk_slot_hashes_ix(
 fn generate_pinocchio_slot_hashes_ix(
     program_id: Pubkey,
     // ix_type now includes the target slot if needed
-    ix_variant: ProgramInstruction, 
+    ix_variant: ProgramInstruction,
     strategy: DecrementStrategy,
     // Pass the specific target_slot value IF the instruction needs it.
     // We'll determine this target_slot in the runner.rs logic.
     // Let's keep the function signature simpler for now and derive target inside if needed,
     // or modify runner.rs to pass it only when ix_variant requires it.
     // Simpler: Let runner.rs handle providing the full ix_variant including the target slot.
-) -> (Instruction, Vec<(Pubkey, Account)>) { 
+) -> (Instruction, Vec<(Pubkey, Account)>) {
     let sysvar_id = solana_pubkey::Pubkey::new_from_array([
         6, 167, 213, 23, 25, 47, 10, 175, 198, 242, 101, 227, 251, 119, 204, 122, 218, 130, 197,
         41, 208, 190, 59, 19, 110, 45, 0, 85, 32, 0, 0, 0,
@@ -326,14 +326,14 @@ fn generate_pinocchio_slot_hashes_ix(
     let mock_entries = generate_mock_slot_hashes_data(strategy);
 
     let num_entries = mock_entries.len() as u64;
-    let mut account_data = Vec::with_capacity(8 + mock_entries.len() * (8 + 32)); 
+    let mut account_data = Vec::with_capacity(8 + mock_entries.len() * (8 + 32));
     account_data.extend_from_slice(&(num_entries as u64).to_le_bytes());
     for (slot, hash) in &mock_entries {
         account_data.extend_from_slice(&slot.to_le_bytes());
         account_data.extend_from_slice(hash);
     }
 
-    // Create the sysvar account 
+    // Create the sysvar account
     let mut sysvar_account = Account::new(1, account_data.len(), &SYSVAR_PROGRAM_ID);
     sysvar_account.data = account_data;
     sysvar_account.executable = false;

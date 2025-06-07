@@ -5,14 +5,15 @@ use {
         instruction::Instruction,
         processor::{
             process_account, process_log, process_ping, process_slot_hashes_get_entry,
-            process_slot_hashes_get_hash_interpolated,
-            process_slot_hashes_position_interpolated,
+            process_slot_hashes_get_hash_interpolated, process_slot_hashes_position_interpolated,
         },
     },
     solana_nostd_entrypoint::{
         basic_panic_impl, entrypoint_nostd, noalloc_allocator, NoStdAccountInfo,
     },
-    solana_program::{entrypoint::ProgramResult, log, pubkey::Pubkey},
+    solana_entrypoint::ProgramResult,
+    solana_log,
+    solana_pubkey::Pubkey,
 };
 
 entrypoint_nostd!(process_instruction, 64);

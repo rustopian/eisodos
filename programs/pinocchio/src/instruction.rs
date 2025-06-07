@@ -51,12 +51,12 @@ impl Instruction {
             Some((&10, remaining)) if remaining.len() == 8 => {
                 let target_slot = u64::from_le_bytes(remaining[0..8].try_into().unwrap());
                 Ok(Instruction::SlotHashesPositionInterpolatedUnchecked { target_slot })
-            },
+            }
             // 11 - SlotHashesPositionNaiveUnchecked { target_slot: Slot }
             Some((&11, remaining)) if remaining.len() == 8 => {
                 let target_slot = u64::from_le_bytes(remaining[0..8].try_into().unwrap());
                 Ok(Instruction::SlotHashesPositionNaiveUnchecked { target_slot })
-            },
+            }
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }

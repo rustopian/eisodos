@@ -1,5 +1,6 @@
 use solana_nostd_entrypoint::{AccountInfoC, InstructionC, NoStdAccountInfo};
-use solana_program::{entrypoint::ProgramResult, program_error::ProgramError};
+use solana_entrypoint::ProgramResult;
+use solana_program_error::ProgramError;
 use std::mem::MaybeUninit;
 
 pub mod create_account;
@@ -45,7 +46,7 @@ unsafe fn invoke_unchecked<const ACCOUNTS: usize>(
 
     #[cfg(target_os = "solana")]
     unsafe {
-        solana_program::syscalls::sol_invoke_signed_c(
+        solana_syscalls::sol_invoke_signed_c(
             instruction as *const InstructionC as *const u8,
             infos.as_ptr() as *const u8,
             infos.len() as u64,

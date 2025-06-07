@@ -1,13 +1,65 @@
 use clap::Parser;
 use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
 use mollusk_svm_bencher::MolluskComputeUnitBencher;
-use solana_sdk::{
-    account::Account,
-    instruction::{AccountMeta, Instruction},
-    pubkey::Pubkey,
-    system_program,
-};
+use solana_account::Account;
+use solana_instruction::{AccountMeta, Instruction};
+use solana_pubkey::Pubkey;
+use solana_system_program;
 use std::{collections::HashMap, path::PathBuf, str::FromStr};
+
+// SlotHashes sysvar ID for detection - matches exactly what Pinocchio defines
+const SLOTHASHES_ID: [u8; 32] = [
+    6, 167, 213, 23, 25, 47, 10, 175, 198, 242, 101, 227, 251, 119, 204, 122, 218, 130, 197, 41,
+    208, 190, 59, 19, 110, 45, 0, 85, 32, 0, 0, 0,
+];
+
+// Sysvar program ID
+const SYSVAR_PROGRAM_ID: [u8; 32] = [
+    6, 167, 213, 23, 25, 47, 10, 175, 198, 242, 101, 227, 251, 119, 204, 122, 218, 130, 197, 41,
+    208, 190, 59, 19, 110, 45, 0, 85, 32, 0, 0, 1,
+];
+
+const NUM_BENCH_SLOT_HASH_ENTRIES: usize = 512;
+const BENCH_SLOT_HASH_START_SLOT: u64 = 10000;
+
+// Simple deterministic PRNG for varied decrements (copied from mod.rs)
+fn simple_prng(seed: u64) -> u64 {
+    const A: u64 = 16807; // Multiplier  
+    const M: u64 = 2147483647; // Modulus (2^31 - 1)
+    let initial_state = if seed == 0 { 1 } else { seed };
+    (A.wrapping_mul(initial_state)) % M
+}
+
+// Generate mock SlotHashes data (copied and simplified from mod.rs)
+fn generate_mock_slot_hashes_data() -> Vec<u8> {
+    let mut entries = Vec::with_capacity(NUM_BENCH_SLOT_HASH_ENTRIES);
+    let mut current_slot = BENCH_SLOT_HASH_START_SLOT;
+
+    for i in 0..NUM_BENCH_SLOT_HASH_ENTRIES {
+        let hash_byte = ((i % 256) + 1) as u8; // Add 1 to avoid all-zero hashes
+        let hash = [hash_byte; 32];
+        entries.push((current_slot, hash));
+
+        let random_val = simple_prng(i as u64);
+        let decrement = if random_val % 20 == 0 { 2 } else { 1 }; // Average1_05 strategy
+
+        let next_slot = current_slot.saturating_sub(decrement);
+        if next_slot == current_slot {
+            break;
+        }
+        current_slot = next_slot;
+    }
+
+    // Serialize to SlotHashes format: u64 len + [(u64 slot, [u8; 32] hash)]
+    let num_entries = entries.len() as u64;
+    let mut data = Vec::with_capacity(8 + entries.len() * (8 + 32));
+    data.extend_from_slice(&num_entries.to_le_bytes());
+    for (slot, hash) in &entries {
+        data.extend_from_slice(&slot.to_le_bytes());
+        data.extend_from_slice(hash);
+    }
+    data
+}
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -70,7 +122,7 @@ fn parse_account_spec(
     let owner_pk = if owner_str.eq_ignore_ascii_case("self") {
         *program_id
     } else if owner_str.eq_ignore_ascii_case("system") {
-        system_program::id()
+        solana_system_program::id()
     } else {
         Pubkey::from_str(owner_str)
             .map_err(|e| format!("Invalid owner pubkey: {owner_str} ({e})"))?
@@ -170,61 +222,71 @@ fn main() {
                             is_writable: spec.is_writable,
                         });
                         accounts_for_bench.push((sys_prog_pk, account_to_add));
+                        
+                        println!(
+                            "Executor: Setting up account '{}({})': {}, signer: {}, writable: {}, \
+                             lamports: {}, data_len: {}, owner: {}, executable: {}",
+                            spec.role_name,
+                            spec.key_placeholder,
+                            sys_prog_pk,
+                            spec.is_signer,
+                            spec.is_writable,
+                            accounts_for_bench.last().unwrap().1.lamports,
+                            accounts_for_bench.last().unwrap().1.data.len(),
+                            accounts_for_bench.last().unwrap().1.owner,
+                            accounts_for_bench.last().unwrap().1.executable
+                        );
                     } else {
                         // Only the *system program account itself* should be executable.
                         // Normal user accounts that are merely *owned* by the system program must
                         // **not** be executable, otherwise the runtime
                         // rejects instructions like `transfer` or `create_account`.
-                        is_executable = final_pubkey == system_program::id();
+                        is_executable = final_pubkey == solana_system_program::id();
+                        
+                        // Special handling for SlotHashes sysvar account
+                        let (actual_pubkey, account_data) = if spec.role_name == "slot_hashes" {
+                            let slothashes_pubkey = Pubkey::new_from_array(SLOTHASHES_ID);
+                            println!("Executor: Using proper SlotHashes sysvar account key: {}", slothashes_pubkey);
+                            println!("Executor: Populating SlotHashes sysvar account with mock data");
+                            let mock_data = generate_mock_slot_hashes_data();
+                            (slothashes_pubkey, mock_data)
+                        } else if final_pubkey.to_bytes() == SLOTHASHES_ID {
+                            println!("Executor: Detected SlotHashes sysvar by key, populating with mock data");
+                            let mock_data = generate_mock_slot_hashes_data();
+                            (final_pubkey, mock_data)
+                        } else {
+                            (final_pubkey, vec![0u8; spec.data_len])
+                        };
+                        
                         account_to_add = Account {
                             lamports: spec.lamports,
-                            data: vec![0u8; spec.data_len],
+                            data: account_data.clone(),
                             owner: spec.owner,
                             executable: is_executable,
                             rent_epoch: 0,
                         };
                         account_metas_for_instruction.push(AccountMeta {
-                            pubkey: final_pubkey,
+                            pubkey: actual_pubkey,
                             is_signer: spec.is_signer,
                             is_writable: spec.is_writable,
                         });
-                        accounts_for_bench.push((final_pubkey, account_to_add));
-                        role_name_to_actual_pubkey_map.insert(spec.role_name.clone(), final_pubkey);
-                    }
-
-                    println!(
-                        "Executor: Setting up account '{}({})': {}, signer: {}, writable: {}, \
-                         lamports: {}, data_len: {}, owner: {}, executable: {}",
-                        spec.role_name,
-                        spec.key_placeholder,
-                        if spec.role_name == "system_program" {
-                            accounts_for_bench.last().unwrap().0
-                        } else {
-                            final_pubkey
-                        },
-                        spec.is_signer,
-                        spec.is_writable,
-                        if spec.role_name == "system_program" {
-                            accounts_for_bench.last().unwrap().1.lamports
-                        } else {
-                            spec.lamports
-                        },
-                        if spec.role_name == "system_program" {
-                            accounts_for_bench.last().unwrap().1.data.len()
-                        } else {
-                            spec.data_len
-                        },
-                        if spec.role_name == "system_program" {
-                            accounts_for_bench.last().unwrap().1.owner
-                        } else {
-                            spec.owner
-                        },
-                        if spec.role_name == "system_program" {
-                            accounts_for_bench.last().unwrap().1.executable
-                        } else {
+                        accounts_for_bench.push((actual_pubkey, account_to_add));
+                        role_name_to_actual_pubkey_map.insert(spec.role_name.clone(), actual_pubkey);
+                        
+                        println!(
+                            "Executor: Setting up account '{}({})': {}, signer: {}, writable: {}, \
+                             lamports: {}, data_len: {}, owner: {}, executable: {}",
+                            spec.role_name,
+                            spec.key_placeholder,
+                            actual_pubkey,
+                            spec.is_signer,
+                            spec.is_writable,
+                            spec.lamports,
+                            account_data.len(),
+                            spec.owner,
                             is_executable
-                        }
-                    );
+                        );
+                    }
                 }
                 Err(e) => {
                     eprintln!("Error parsing account spec \"{spec_str}\": {e}. Skipping.");

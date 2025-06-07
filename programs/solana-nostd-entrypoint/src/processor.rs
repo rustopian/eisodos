@@ -4,9 +4,11 @@ use core::mem::size_of;
 use {
     crate::cpi::{create_account_unchecked, transfer_unchecked},
     solana_nostd_entrypoint::NoStdAccountInfo,
-    solana_program::sysvar::slot_hashes as solana_slot_hashes,
+    solana_sysvar::slot_hashes as solana_slot_hashes,
     // borsh::de::BorshDeserialize, // Removed as unused (code using it is commented out)
-    solana_program::{entrypoint::ProgramResult, program_error::ProgramError},
+    solana_entrypoint::ProgramResult,
+    solana_program_error::ProgramError,
+    solana_system_program::ID as SYSTEM_PROGRAM_ID,
 };
 
 #[inline(always)]
@@ -151,7 +153,7 @@ pub fn process_slot_hashes_position_interpolated(accounts: &[NoStdAccountInfo]) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use solana_program::hash::Hash;
+    use solana_hash::Hash;
     use std::vec; // For convenience, though not strictly needed
 
     // Helper to create mock SlotHashes data (u64 len prefix)

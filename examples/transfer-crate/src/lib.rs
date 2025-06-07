@@ -32,16 +32,15 @@ const TRANSFER_INSTRUCTION_TAG: u8 = 0;
 const AMOUNT_OFFSET: usize = 1;
 const REQUIRED_INSTRUCTION_DATA_LEN: usize = 9;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "solana-program")]
 pub mod solana_benches {
     use {
         solana_account_info::{AccountInfo, next_account_info},
         solana_entrypoint::ProgramResult,
-        solana_invoke,
-        solana_msg,
+        solana_cpi::invoke,
         solana_program_error::ProgramError,
         solana_pubkey::Pubkey,
-        solana_system_program::system_instruction,
+        solana_system_interface::instruction,
     };
     use super::{TRANSFER_INSTRUCTION_TAG, AMOUNT_OFFSET, REQUIRED_INSTRUCTION_DATA_LEN};
 
@@ -51,10 +50,56 @@ pub mod solana_benches {
         instruction_data: &[u8],
     ) -> ProgramResult {
         if instruction_data.is_empty() || instruction_data[0] != TRANSFER_INSTRUCTION_TAG {
-            return Err(solana_program::program_error::ProgramError::InvalidInstructionData);
+            return Err(ProgramError::InvalidInstructionData);
         }
         if instruction_data.len() < REQUIRED_INSTRUCTION_DATA_LEN {
-            return Err(solana_program::program_error::ProgramError::InvalidInstructionData);
+            return Err(ProgramError::InvalidInstructionData);
+        }
+
+        let amount = u64::from_le_bytes(instruction_data[AMOUNT_OFFSET..REQUIRED_INSTRUCTION_DATA_LEN].try_into().unwrap());
+
+        let account_iter = &mut accounts.iter();
+        let source_account = next_account_info(account_iter)?;
+        let destination_account = next_account_info(account_iter)?;
+        let system_program_account = next_account_info(account_iter)?;
+
+        invoke(
+            &instruction::transfer(
+                source_account.key,
+                destination_account.key,
+                amount,
+            ),
+            &[
+                source_account.clone(),
+                destination_account.clone(),
+                system_program_account.clone(),
+            ],
+        )
+    }
+}
+
+#[cfg(feature = "solana-program-mono")]
+pub mod solana_program_mono_benches {
+    use solana_program::{
+        account_info::{AccountInfo, next_account_info},
+        entrypoint::ProgramResult,
+        program::invoke,
+        program_error::ProgramError,
+        pubkey::Pubkey,
+        system_instruction,
+    };
+    use super::{TRANSFER_INSTRUCTION_TAG, AMOUNT_OFFSET, REQUIRED_INSTRUCTION_DATA_LEN};
+
+    pub fn run_transfer_bench(
+        _program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        instruction_data: &[u8],
+    ) -> ProgramResult {
+        if instruction_data.is_empty() || instruction_data[0] != TRANSFER_INSTRUCTION_TAG {
+            return Err(ProgramError::InvalidInstructionData);
+        }
+        if instruction_data.len() < REQUIRED_INSTRUCTION_DATA_LEN {
+            return Err(ProgramError::InvalidInstructionData);
         }
 
         let amount = u64::from_le_bytes(instruction_data[AMOUNT_OFFSET..REQUIRED_INSTRUCTION_DATA_LEN].try_into().unwrap());

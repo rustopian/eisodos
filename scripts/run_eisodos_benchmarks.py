@@ -10,6 +10,56 @@ import os
 import json
 import time
 
+# --- Color Constants ---
+class Colors:
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    
+    # Standard colors
+    RED = '\033[31m'
+    GREEN = '\033[32m'
+    YELLOW = '\033[33m'
+    BLUE = '\033[34m'
+    MAGENTA = '\033[35m'
+    CYAN = '\033[36m'
+    WHITE = '\033[37m'
+    
+    # Bright colors
+    BRIGHT_RED = '\033[91m'
+    BRIGHT_GREEN = '\033[92m'
+    BRIGHT_YELLOW = '\033[93m'
+    BRIGHT_BLUE = '\033[94m'
+    BRIGHT_MAGENTA = '\033[95m'
+    BRIGHT_CYAN = '\033[96m'
+
+def print_section(message):
+    """Print a section header in bright cyan with bold."""
+    print(f"{Colors.BRIGHT_CYAN}{Colors.BOLD}{message}{Colors.RESET}")
+
+def print_subsection(message):
+    """Print a subsection header in cyan."""
+    print(f"{Colors.CYAN}{message}{Colors.RESET}")
+
+def print_success(message):
+    """Print a success message in green."""
+    print(f"{Colors.GREEN}{message}{Colors.RESET}")
+
+def print_warning(message):
+    """Print a warning message in yellow."""
+    print(f"{Colors.YELLOW}Warning: {message}{Colors.RESET}", file=sys.stderr)
+
+def print_error(message):
+    """Print an error message in red."""
+    print(f"{Colors.RED}Error: {message}{Colors.RESET}", file=sys.stderr)
+
+def print_result(message):
+    """Print a result message in bright green with bold."""
+    print(f"{Colors.BRIGHT_GREEN}{Colors.BOLD}{message}{Colors.RESET}")
+
+def print_build_info(message):
+    """Print build-related info in blue."""
+    print(f"{Colors.BLUE}{message}{Colors.RESET}")
+
 # --- Constants ---
 EISODOS_ROOT = pathlib.Path(__file__).parent.parent.resolve()
 WORKSPACE_ROOT = EISODOS_ROOT
@@ -55,7 +105,7 @@ def parse_function_path(full_path):
         module_path = "::".join(parts[1:-1]) if len(parts) > 2 else "" # Join intermediate parts if they exist
         return crate_name, module_path, func_name
     except Exception as e:
-        print(f"Error parsing function path '{full_path}': {e}", file=sys.stderr)
+        print_error(f"parsing function path '{full_path}': {e}")
         return None, None, None
 
 def format_features(features_list):
@@ -71,11 +121,13 @@ def replace_placeholders(content, replacements):
     return content
 
 def run_cargo_build(temp_project_dir):
-    """Runs cargo-build-sbf and returns artifact path and program ID."""
-    print(f"--- Building benchmark project using cargo-build-sbf in: {temp_project_dir} ---")
+    """Runs cargo-build-sbf and returns artifact path, program ID, build time, and program size."""
+    print_build_info(f"--- Building benchmark project using cargo-build-sbf in: {temp_project_dir} ---")
     package_name = None
     program_id = None # Variable to store extracted program ID
     artifact_path = None # Variable to store artifact path
+    build_time_seconds = None # Variable to store build time
+    program_size_bytes = None # Variable to store program size
     
     try:
         with open(temp_project_dir / "Cargo.toml", "r", encoding="utf-8") as f:
@@ -83,11 +135,11 @@ def run_cargo_build(temp_project_dir):
         manifest = toml.loads(manifest_content)
         package_name = manifest.get("package", {}).get("name")
     except Exception as e:
-        print(f"Warning: Could not determine package name from temp Cargo.toml: {e}", file=sys.stderr)
+        print_warning(f"Could not determine package name from temp Cargo.toml: {e}")
     
     if not package_name:
-        print(f"Error: Cannot determine package name for build artifact.", file=sys.stderr)
-        return None, None # Return None for both path and ID
+        print_error("Cannot determine package name for build artifact.")
+        return None, None, None, None # Return None for all values
 
     canonical_filename_stem = package_name.replace('-', '_')
     expected_so_filename = f"{canonical_filename_stem}.so"
@@ -100,24 +152,36 @@ def run_cargo_build(temp_project_dir):
         build_command = ["cargo-build-sbf"]
         print(f"Running build command: {' '.join(build_command)} in {temp_project_dir}")
         
+        # Measure build time
+        build_start_time = time.time()
         result = subprocess.run(
             build_command,
             cwd=temp_project_dir,
+            env=dict(os.environ, RUSTFLAGS='--cfg getrandom_backend="custom"'),
             check=True,
             capture_output=True,
             text=True,
             encoding='utf-8' 
         )
-        print("Build command finished.")
+        build_end_time = time.time()
+        build_time_seconds = round(build_end_time - build_start_time, 2)
+        print_success(f"Build command finished in {build_time_seconds}s.")
 
         # Check for SO artifact
         print(f"Checking for expected artifact at: {expected_so_path}")
         if os.path.isfile(expected_so_path):
-            print(f"  Artifact found: {expected_so_path}")
+            print_success(f"  Artifact found: {expected_so_path}")
             artifact_path = expected_so_path
+            # Get program size
+            try:
+                program_size_bytes = os.path.getsize(expected_so_path)
+                print_success(f"  Program size: {program_size_bytes} bytes ({program_size_bytes / 1024:.1f} KB)")
+            except Exception as size_err:
+                print_warning(f"Could not determine program size: {size_err}")
+                program_size_bytes = None
         else:
-            print(f"  Artifact NOT found: {expected_so_path}", file=sys.stderr)
-            return None, None
+            print_error(f"  Artifact NOT found: {expected_so_path}")
+            return None, None, None, None
 
         # Check for Keypair file and extract Program ID using solana-keygen
         print(f"Checking for keypair file at: {expected_keypair_path}")
@@ -136,33 +200,33 @@ def run_cargo_build(temp_project_dir):
                 )
                 program_id = keygen_result.stdout.strip() # Get stdout and remove surrounding whitespace/newline
                 if program_id:
-                    print(f"  Extracted Program ID via solana-keygen: {program_id}")
+                    print_success(f"  Extracted Program ID via solana-keygen: {program_id}")
                 else:
-                    print(f"  solana-keygen command returned empty output.", file=sys.stderr)
+                    print_error("  solana-keygen command returned empty output.")
 
             except subprocess.CalledProcessError as e:
-                print(f"Error running solana-keygen for {expected_keypair_path}:", file=sys.stderr)
+                print_error(f"running solana-keygen for {expected_keypair_path}:")
                 print(f"Stderr: {e.stderr}", file=sys.stderr)
             except FileNotFoundError:
-                print("Error: 'solana-keygen' command not found. Is the Solana toolchain installed and in PATH?", file=sys.stderr)
+                print_error("'solana-keygen' command not found. Is the Solana toolchain installed and in PATH?")
             except Exception as e:
-                print(f"Error extracting Program ID via solana-keygen for {expected_keypair_path}: {e}", file=sys.stderr)
+                print_error(f"extracting Program ID via solana-keygen for {expected_keypair_path}: {e}")
         else:
-            print(f"  Keypair file NOT found: {expected_keypair_path}. Cannot determine Program ID.", file=sys.stderr)
+            print_error(f"  Keypair file NOT found: {expected_keypair_path}. Cannot determine Program ID.")
 
     except subprocess.CalledProcessError as e:
-        print(f"Error building benchmark project in {temp_project_dir}:", file=sys.stderr)
+        print_error(f"building benchmark project in {temp_project_dir}:")
         print(e.stderr, file=sys.stderr)
-        return None, None
+        return None, None, None, None
     except FileNotFoundError:
-         print("Error: 'cargo-build-sbf' command not found. Is the Solana toolchain installed and in PATH?", file=sys.stderr)
-         return None, None
+         print_error("'cargo-build-sbf' command not found. Is the Solana toolchain installed and in PATH?")
+         return None, None, None, None
     except Exception as e:
-         print(f"An unexpected error occurred during build: {e}", file=sys.stderr)
-         return None, None
+         print_error(f"An unexpected error occurred during build: {e}")
+         return None, None, None, None
 
-    # Return the found artifact path and program ID (which might be None if keypair failed)
-    return artifact_path, program_id
+    # Return the found artifact path, program ID, build time, and program size
+    return artifact_path, program_id, build_time_seconds, program_size_bytes
 
 def format_toml_dict(data):
     """ Formats a dictionary into TOML syntax (basic implementation). """
@@ -193,7 +257,7 @@ def get_workspace_dependencies_block(dep_names):
             if name in workspace_deps:
                 deps_to_include[name] = workspace_deps[name]
             else:
-                 print(f"Warning: Dependency '{name}' requested but not found in [workspace.dependencies] in {root_cargo_path}", file=sys.stderr)
+                 print_warning(f"Dependency '{name}' requested but not found in [workspace.dependencies] in {root_cargo_path}")
         
         if not deps_to_include:
             # Return just the table header if no deps found/requested
@@ -204,10 +268,10 @@ def get_workspace_dependencies_block(dep_names):
         return f"[workspace.dependencies]\n{deps_block_content}"
              
     except FileNotFoundError:
-        print(f"Error: Workspace root Cargo.toml not found at {root_cargo_path}", file=sys.stderr)
+        print_error(f"Workspace root Cargo.toml not found at {root_cargo_path}")
         return None
     except Exception as e:
-        print(f"Error reading or parsing workspace root Cargo.toml {root_cargo_path}: {e}", file=sys.stderr)
+        print_error(f"reading or parsing workspace root Cargo.toml {root_cargo_path}: {e}")
         return None
 
 def get_package_name_from_manifest(crate_dir):
@@ -219,14 +283,14 @@ def get_package_name_from_manifest(crate_dir):
         manifest = toml.loads(manifest_content)
         package_name = manifest.get("package", {}).get("name")
         if not package_name:
-            print(f"Error: Could not find [package].name in {manifest_path}", file=sys.stderr)
+            print_error(f"Could not find [package].name in {manifest_path}")
             return None
         return package_name
     except FileNotFoundError:
-        print(f"Error: Manifest file not found at {manifest_path}", file=sys.stderr)
+        print_error(f"Manifest file not found at {manifest_path}")
         return None
     except Exception as e:
-        print(f"Error reading or parsing manifest {manifest_path}: {e}", file=sys.stderr)
+        print_error(f"reading or parsing manifest {manifest_path}: {e}")
         return None
 
 # --- Main Logic ---
@@ -240,7 +304,25 @@ def main():
         nargs='+',
         help="Path(s) to crate(s) or directories containing crates with eisodos_benchmarks.toml"
     )
+    parser.add_argument(
+        "--entrypoints",
+        type=str,
+        default="pinocchio",
+        help=(
+            "Comma-separated list of entrypoint implementations to benchmark "
+            "(e.g. 'pinocchio,solana-program,solana-program-mono'). Default: 'pinocchio'"
+        ),
+    )
     args = parser.parse_args()
+
+    # Parse the entrypoints list provided by the user (deduplicated, lower-cased)
+    requested_entrypoints = {
+        ep.strip().lower() for ep in args.entrypoints.split(',') if ep.strip()
+    }
+    if not requested_entrypoints:
+        requested_entrypoints = {"pinocchio"}
+
+    print(f"Requested entrypoints to benchmark: {', '.join(sorted(requested_entrypoints))}\n")
 
     all_benchmark_results = [] # To store results from all runs across all crates
     built_artifacts = []
@@ -266,7 +348,7 @@ def main():
     # Process each crate
     for crate_dir in crates_to_process:
         config_path = crate_dir / "eisodos_benchmarks.toml"
-        print(f"\n=== Processing crate: {crate_dir} ===")
+        print_section(f"\n=== Processing crate: {crate_dir} ===")
 
         # Get the actual package name from the benchmarked crate's manifest
         actual_benched_crate_name = get_package_name_from_manifest(crate_dir)
@@ -276,13 +358,17 @@ def main():
 
         # Define the list of ALL workspace dependencies that *might* be needed
         # by the benchmarked crate OR the runner templates across any entrypoint.
-        potentially_needed_workspace_deps = ["pinocchio", "solana-program", "solana-program-error"]
+        # Only include crates that really live in the workspace. SDK crates from crates.io
+        # are added to the runner template with explicit versions instead of `workspace = true`.
+        potentially_needed_workspace_deps = [
+            "pinocchio",
+        ]
         print(f"Fetching definitions for potentially needed workspace deps: {potentially_needed_workspace_deps}")
 
         # Get the definitions for ALL these potential dependencies from eisodos/Cargo.toml
         complete_workspace_deps_block = get_workspace_dependencies_block(potentially_needed_workspace_deps)
         if not complete_workspace_deps_block:
-            print(f"Error: Failed to get definitions for workspace dependencies: {potentially_needed_workspace_deps}", file=sys.stderr)
+            print_error(f"Failed to get definitions for workspace dependencies: {potentially_needed_workspace_deps}")
             continue # Skip this crate but continue with others
         print(f"--- Using definitions for all potentially needed workspace dependencies:\n{complete_workspace_deps_block}")
 
@@ -296,7 +382,7 @@ def main():
             # Parse the string content
             config = toml.loads(config_content)
         except Exception as e:
-            print(f"Error reading or parsing {config_path}: {e}", file=sys.stderr)
+            print_error(f"reading or parsing {config_path}: {e}")
             continue # Skip this crate but continue with others
 
         # Ensure the base target directory exists
@@ -310,7 +396,7 @@ def main():
             features_config = bench_config.get("features", []) # List of {entrypoint, features} dicts
 
             if not bench_id or not function_path:
-                print(f"Warning: Skipping benchmark entry missing 'id' or 'function': {bench_config}", file=sys.stderr)
+                print_warning(f"Skipping benchmark entry missing 'id' or 'function': {bench_config}")
                 continue
 
             # Use crate name from function path ONLY for importing the rust function itself
@@ -318,11 +404,15 @@ def main():
             if not rust_import_crate_name or not bench_func:
                 continue # Skip if parsing failed
 
-            print(f"=== Processing Benchmark: {bench_id} ===")
+            print_section(f"=== Processing Benchmark: {bench_id} ===")
 
-            # Generate for each specified entrypoint
+            # Generate for each specified entrypoint that the user requested
             for entrypoint_name in entrypoints:
-                print(f"---> Entrypoint: {entrypoint_name}")
+                if entrypoint_name not in requested_entrypoints:
+                    # Skip entrypoints that the user did not ask for
+                    continue
+
+                print_subsection(f"---> Entrypoint: {entrypoint_name}")
 
                 # Find features for this specific entrypoint
                 entrypoint_features = []
@@ -338,12 +428,18 @@ def main():
                 elif entrypoint_name == "solana-program":
                     cargo_template_path = TEMPLATES_DIR / "template.solana_program.cargo.toml"
                     main_template_path = TEMPLATES_DIR / "template.solana_program.lib.rs"
+                elif entrypoint_name == "solana-program-mono":
+                    cargo_template_path = TEMPLATES_DIR / "template.solana_program_mono.cargo.toml"
+                    main_template_path = TEMPLATES_DIR / "template.solana_program_mono.lib.rs"
+                elif entrypoint_name == "solana-nostd-entrypoint":
+                    cargo_template_path = TEMPLATES_DIR / "template.solana_nostd_entrypoint.cargo.toml"
+                    main_template_path = TEMPLATES_DIR / "template.solana_nostd_entrypoint.lib.rs"
                 else:
-                    print(f"Warning: Entrypoint '{entrypoint_name}' not yet supported. Skipping.", file=sys.stderr)
+                    print_warning(f"Entrypoint '{entrypoint_name}' not yet supported. Skipping.")
                     continue
 
                 if not cargo_template_path.is_file() or not main_template_path.is_file():
-                    print(f"Error: Template files not found for entrypoint '{entrypoint_name}' ({cargo_template_path}, {main_template_path}). Skipping.", file=sys.stderr)
+                    print_error(f"Template files not found for entrypoint '{entrypoint_name}' ({cargo_template_path}, {main_template_path}). Skipping.")
                     continue
 
                 # Create unique temp directory name and paths
@@ -369,9 +465,48 @@ def main():
                         try:
                             manifest_text = benched_manifest_path.read_text(encoding="utf-8")
                             manifest_data = toml.loads(manifest_text)
+
+                            # Track whether we make any modifications so we only rewrite the file when needed
+                            changed = False
+
+                            # --- Remove nested workspace section if present ---
                             if "workspace" in manifest_data:
                                 print(f"Removing [workspace] section from copied crate manifest at {benched_manifest_path}")
-                                manifest_data.pop("workspace", None)  # Delete the table entirely
+                                manifest_data.pop("workspace", None)
+                                changed = True
+
+                            # --- Ensure a suitable [lib] section with the required crate-type ---
+                            lib_table = manifest_data.get("lib")
+                            if lib_table is None:
+                                lib_table = {}
+                                manifest_data["lib"] = lib_table
+                                changed = True
+
+                            crate_types = lib_table.get("crate-type")
+
+                            # Normalize crate_types to a list and guarantee both "cdylib" and "lib" are present
+                            if crate_types is None:
+                                lib_table["crate-type"] = ["cdylib", "lib"]
+                                changed = True
+                            else:
+                                # Convert single string to list for uniform handling
+                                if isinstance(crate_types, str):
+                                    crate_types = [crate_types]
+                                if isinstance(crate_types, list):
+                                    if "cdylib" not in crate_types:
+                                        crate_types.append("cdylib")
+                                        changed = True
+                                    if "lib" not in crate_types:
+                                        crate_types.append("lib")
+                                        changed = True
+                                    lib_table["crate-type"] = crate_types
+                                else:
+                                    # Unexpected type; overwrite with the desired list
+                                    lib_table["crate-type"] = ["cdylib", "lib"]
+                                    changed = True
+
+                            # --- Persist manifest only if we actually changed it ---
+                            if changed:
                                 benched_manifest_path.write_text(toml.dumps(manifest_data), encoding="utf-8")
                         except Exception as sanitize_err:
                             print(f"Warning: Failed to sanitize copied crate manifest {benched_manifest_path}: {sanitize_err}", file=sys.stderr)
@@ -390,10 +525,17 @@ def main():
                 if entrypoint_name == "pinocchio":
                     entrypoint_sdk_dep_line = 'pinocchio = { workspace = true, default-features = false } # For runner template'
                 elif entrypoint_name == "solana-program":
+                    # Minimal set of SDK crates the template actually uses.
                     entrypoint_sdk_dep_line = (
-                        'solana-program = { workspace = true } # For runner template\n'
-                        'solana-program-error = { workspace = true } # For direct ProgramResult import'
+                        'solana-account-info = { version = "^2.2", default-features = false }\n'
+                        'solana-entrypoint = { package = "solana-program-entrypoint", version = "^2.2", default-features = false }\n'
+                        'solana-program-error = { version = "^2.2", default-features = false }\n'
+                        'solana-pubkey = { version = "^2.2", default-features = false }\n'
+                        'solana-msg = { version = "^2.2", default-features = false }'
                     )
+                elif entrypoint_name == "solana-program-mono":
+                    # Use the monolithic solana-program crate instead of broken-out crates
+                    entrypoint_sdk_dep_line = 'solana-program = { version = "^2.2", default-features = false }'
 
                 # Prepare placeholder replacements
                 replacements = {
@@ -436,12 +578,20 @@ def main():
                     }
                     main_content = replace_placeholders(main_content, main_replacements)
                     (temp_src_dir / "lib.rs").write_text(main_content)
+
+                    # --- Add noop_env_logger stub crate ---
+                    noop_dir = temp_project_dir / "noop_env_logger" / "src"
+                    noop_dir.mkdir(parents=True, exist_ok=True)
+                    (noop_dir.parent / "Cargo.toml").write_text(
+                        '[package]\nname = "env_logger"\nversion = "0.10.2"\nedition = "2021"\n[lib]\ncrate-type = ["rlib"]\n[dependencies]\nlog = { version = "0.4", default-features = false }\n'
+                    )
+                    (noop_dir / "lib.rs").write_text('#![no_std]\npub use log::*;\n')
                 except Exception as e:
                     print(f"Error processing Rust template for {temp_dir_name}: {e}", file=sys.stderr)
                     continue 
 
                 # Build the temporary project workspace
-                artifact_path, program_id = run_cargo_build(temp_project_dir)
+                artifact_path, program_id, build_time_seconds, program_size_bytes = run_cargo_build(temp_project_dir)
 
                 # Check if build was successful AND program_id was found
                 if artifact_path and artifact_path.is_file() and program_id:
@@ -490,6 +640,10 @@ def main():
                             num_accounts_for_payload_run = 3 # Source, Destination, System Program
                         elif "log" in bench_id: # Log bench doesn't strictly need accounts for its operation
                             num_accounts_for_payload_run = 0 
+                        elif "slot_hashes" in bench_id:
+                            # Set up SlotHashes sysvar account with proper ID and mock data
+                            # Use the actual sysvar program ID: Sysvar1111111111111111111111111111111111111
+                            num_accounts_for_payload_run = 1 # Just the SlotHashes sysvar account
                         # For account-read, it might use instruction_payload if we extend it, or stick to account_setups
                         
                         serialized_data = serialize_payload(instruction_payload, bench_id)
@@ -539,16 +693,21 @@ def main():
                                  "ping" if "ping" in bench_id else
                                  "log" if "log" in bench_id else bench_id
                              ),
+                             # NEW: Add build time and program size metrics
+                             "BuildTimeSeconds": build_time_seconds,
+                             "ProgramSizeBytes": program_size_bytes,
                          }
 
-                         print(f"=== Starting benchmark run: {current_run_metrics['id']} ===")
+                         print_subsection(f"=== Starting benchmark run: {current_run_metrics['id']} ===")
                          print(f"--- Preparing to execute for {num_accounts_to_provide} account(s), instruction_hex: {instruction_hex} ---")
                          if entrypoint_name == "pinocchio":
-                             print(f"--- Executing Pinocchio benchmark for: {artifact_path} ---")
+                             print_build_info(f"--- Executing Pinocchio benchmark for: {artifact_path} ---")
                          elif entrypoint_name == "solana-program":
-                             print(f"--- Executing Solana benchmark for: {artifact_path} ---")
+                             print_build_info(f"--- Executing Solana benchmark for: {artifact_path} ---")
+                         elif entrypoint_name == "solana-program-mono":
+                             print_build_info(f"--- Executing Solana (mono) benchmark for: {artifact_path} ---")
                          else:
-                             print(f"Warning: Unknown entrypoint {entrypoint_name} for execution.", file=sys.stderr)
+                             print_warning(f"Unknown entrypoint {entrypoint_name} for execution.")
                              continue # Skip execution if entrypoint unknown
 
                          # NEW: Construct account_spec arguments for the executor
@@ -568,6 +727,12 @@ def main():
                                  ])
                              elif "log" in bench_id:
                                  pass # Log typically needs no accounts for the instruction itself
+                             elif "slot_hashes" in bench_id:
+                                 # Set up SlotHashes sysvar account with proper ID and mock data
+                                 # Use the actual sysvar program ID: Sysvar1111111111111111111111111111111111111
+                                 account_spec_args.extend([
+                                     "--account-spec", "slot_hashes:SysvarS1otHashes111111111111111111111111111:false:false:1:20488:Sysvar1111111111111111111111111111111111111"
+                                 ])
                              # Add other specific setups as new benchmark types are added
                          elif account_setups: # Logic for account_setups (e.g. account-read)
                              # The executor has a fallback for num_accounts if instruction_data is the old default "01"
@@ -669,22 +834,22 @@ def main():
                                         if not found_match:
                                             print(f"  No matching benchmark found for '{base_name}' with entrypoint '{entrypoint}'")
                                     except Exception as md_err:
-                                        print(f"Warning: Failed to parse Mollusk markdown {md_path}: {md_err}", file=sys.stderr)
+                                        print_warning(f"Failed to parse Mollusk markdown {md_path}: {md_err}")
                              
                              # Store the result if we have compute units data (either from stdout or markdown fallback)
                              if "MedianComputeUnits" in current_run_metrics:
-                                 print(f"Storing result for: {current_run_metrics['id']} -> {current_run_metrics['MedianComputeUnits']} CUs")
+                                 print_result(f"Storing result for: {current_run_metrics['id']} -> {current_run_metrics['MedianComputeUnits']} CUs")
                                  all_benchmark_results.append(current_run_metrics.copy())
                              else:
                                  print(f"No compute unit data found for: {current_run_metrics['id']}")
                          except subprocess.CalledProcessError as e:
-                             print(f"Error executing benchmark for {artifact_path}:", file=sys.stderr)
+                             print_error(f"executing benchmark for {artifact_path}:")
                              print("Stdout:", e.stdout, file=sys.stderr)
                              print("Stderr:", e.stderr, file=sys.stderr)
                          except Exception as e:
-                             print(f"An unexpected error occurred during benchmark execution: {e}", file=sys.stderr)
+                             print_error(f"An unexpected error occurred during benchmark execution: {e}")
                 elif artifact_path and artifact_path.is_file() and not program_id:
-                    print(f"Build successful but failed to extract Program ID for {artifact_path}. Skipping execution.", file=sys.stderr)
+                    print_warning(f"Build successful but failed to extract Program ID for {artifact_path}. Skipping execution.")
                     # Optionally add to results with a 'failed_execution' status
                 else:
                      print(f"Build failed for {temp_project_dir}")
@@ -692,11 +857,11 @@ def main():
     # --- Generate Markdown Report --- 
     if all_benchmark_results:
         md_path = WORKSPACE_ROOT / "benchmark_results.md"
-        print(f"\nGenerating Markdown report: {md_path}")
+        print_success(f"\nGenerating Markdown report: {md_path}")
         with open(md_path, "w", encoding="utf-8") as md_file:
             md_file.write("# Eisodos Benchmark Results\n\n")
-            # Define headers - Added "Accounts Processed"
-            headers = ["ID", "Entrypoint", "Features", "AccountsProcessed", "BenchmarkName", "MedianComputeUnits", "TotalComputeUnits", "InstructionsExecuted", "Program ID", "Artifact"]
+            # Define headers - Added Build Time and Program Size
+            headers = ["ID", "Entrypoint", "Features", "AccountsProcessed", "BuildTimeSeconds", "ProgramSizeBytes", "BenchmarkName", "MedianComputeUnits", "TotalComputeUnits", "InstructionsExecuted", "Program ID", "Artifact"]
             md_file.write("| " + " | ".join(headers) + " |\n")
             md_file.write("| " + " | ".join(["---"] * len(headers)) + " |\n")
             row_lines = []  # Collect rows for console output
@@ -706,11 +871,20 @@ def main():
                 if isinstance(features_val, list):
                     features_val = ", ".join(features_val) if features_val else "none"
 
+                # Format program size for better readability
+                program_size_bytes = result.get("ProgramSizeBytes", "N/A")
+                if isinstance(program_size_bytes, (int, float)) and program_size_bytes is not None:
+                    program_size_display = f"{program_size_bytes} ({program_size_bytes / 1024:.1f} KB)"
+                else:
+                    program_size_display = "N/A"
+
                 display_map = {
                     "ID": result.get("id", "N/A"),
                     "Entrypoint": result.get("entrypoint", "N/A"),
                     "Features": features_val,
                     "AccountsProcessed": result.get("AccountsProcessed", "N/A"),
+                    "BuildTimeSeconds": result.get("BuildTimeSeconds", "N/A"),
+                    "ProgramSizeBytes": program_size_display,
                     "BenchmarkName": result.get("BenchmarkName", "N/A"),
                     "MedianComputeUnits": result.get("MedianComputeUnits", "N/A"),
                     "TotalComputeUnits": result.get("TotalComputeUnits", "N/A"),
@@ -728,24 +902,32 @@ def main():
                 row_markdown = "| " + " | ".join(row) + " |"
                 md_file.write(row_markdown + "\n")
                 row_lines.append(row_markdown)
-        print(f"Report generated: {md_path}")
+        print_success(f"Report generated: {md_path}")
 
         # Console summary in simplified format
-        print("\n=== Benchmark Summary ===")
-        simple_headers = ["crate", "instruction", "entrypoint", "CUs"]
+        print_section("\n=== Benchmark Summary ===")
+        simple_headers = ["crate", "instruction", "entrypoint", "build_time", "program_size", "CUs"]
         print(" | ".join(simple_headers))
         print(" | ".join(["---"] * len(simple_headers)))
         for result in all_benchmark_results:
             cu = result.get("MedianComputeUnits", "N/A")
-            print(f"{result.get('crate', 'N/A')} | {result.get('instruction', 'N/A')} | {result.get('entrypoint', 'N/A')} | {cu}")
+            build_time = result.get("BuildTimeSeconds", "N/A")
+            if isinstance(build_time, (int, float)):
+                build_time = f"{build_time}s"
+            
+            program_size = result.get("ProgramSizeBytes", "N/A") 
+            if isinstance(program_size, (int, float)):
+                program_size = f"{program_size / 1024:.1f}KB"
+            
+            print(f"{result.get('crate', 'N/A')} | {result.get('instruction', 'N/A')} | {result.get('entrypoint', 'N/A')} | {build_time} | {program_size} | {cu}")
     else:
         print("\nNo benchmark results to report.")
 
-    print("\n=== Summary ===")
+    print_section("\n=== Summary ===")
     if built_artifacts:
-        print("Successfully built artifacts:")
+        print_success("Successfully built artifacts:")
         for path in built_artifacts:
-            print(f" - {path}")
+            print_success(f" - {path}")
         print("Note: Execution of these artifacts depends on the entrypoint environment (e.g., native, SVM).")
     else:
         print("No artifacts were built successfully.")

@@ -1,10 +1,49 @@
-#[cfg(feature = "std")]
-use { solana_account_info::AccountInfo, solana_entrypoint::ProgramResult, solana_msg, solana_program_error::ProgramError, solana_pubkey::Pubkey };
+#[cfg(feature = "solana-program")]
+use {
+    solana_account_info::AccountInfo,
+    solana_entrypoint::ProgramResult,
+    solana_program_error::ProgramError,
+    solana_pubkey::Pubkey,
+};
 
+#[cfg(feature = "solana-program-mono")]
+use solana_program::{
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+    program_error::ProgramError,
+    pubkey::Pubkey,
+};
+
+// Add a convenience macro that is a no-op in release builds
+#[cfg(feature = "solana-program")]
+#[cfg(debug_assertions)]
+macro_rules! debug_msg {
+    ($($arg:tt)*) => {
+        msg!($($arg)*);
+    };
+}
+#[cfg(feature = "solana-program")]
+#[cfg(not(debug_assertions))]
+macro_rules! debug_msg {
+    ($($arg:tt)*) => {};
+}
+
+#[cfg(feature = "solana-program-mono")]
+#[cfg(debug_assertions)]
+macro_rules! debug_msg {
+    ($($arg:tt)*) => {
+        solana_program::msg!($($arg)*);
+    };
+}
+#[cfg(feature = "solana-program-mono")]
+#[cfg(not(debug_assertions))]
+macro_rules! debug_msg {
+    ($($arg:tt)*) => {};
+}
 
 /// Processes a benchmark instruction to read a specified number of accounts.
 ///
-/// This function is designed to be called from both Solana (std) and Pinocchio (no_std)
+/// This function is designed to be called from both Solana (solana-program) and Pinocchio (no_std)
 /// entrypoint harnesses. It uses feature gating to adapt to the specific types and error
 /// handling of each environment.
 ///
@@ -46,29 +85,63 @@ pub fn process_account_reads(
     Ok(())
 }
 
-// Use separate function signatures for std to avoid complex cfg in signature
-#[cfg(feature = "std")]
+// Use separate function signatures for solana-program to avoid complex cfg in signature
+#[cfg(feature = "solana-program")]
 pub fn process_account_reads(
-    _program_id: &solana_program::pubkey::Pubkey,
-    accounts: &[solana_program::account_info::AccountInfo],
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
     instruction_data: &[u8],
-) -> solana_program::entrypoint::ProgramResult {
-    use solana_program::{msg, program_error::ProgramError};
-    msg!("Executing account_read [std]...");
+) -> ProgramResult {
+    // debug_msg!("Executing account_read [solana-program]...");
 
     if instruction_data.is_empty() {
-        msg!("Error: Instruction data is empty. Expected 1 byte specifying number of accounts to read.");
+        // debug_msg!("Error: Instruction data is empty. Expected 1 byte specifying number of accounts to read.");
         return Err(ProgramError::InvalidInstructionData);
     }
 
     let num_accounts_to_read = instruction_data[0] as usize;
 
     if accounts.len() < num_accounts_to_read {
-        msg!(
-            "Error: Not enough accounts provided. Expected at least {}, found {}.",
-            num_accounts_to_read,
-            accounts.len()
-        );
+        // debug_msg!(
+        //     "Error: Not enough accounts provided. Expected at least {}, found {}.",
+        //     num_accounts_to_read,
+        //     accounts.len()
+        // );
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+
+    for i in 0..num_accounts_to_read {
+        let account = &accounts[i];
+        let account_data = account.try_borrow_data()?;
+        if !account_data.is_empty() {
+            let _first_byte = account_data[0];
+        }
+    }
+    Ok(())
+}
+
+// Use separate function signatures for solana-program-mono to avoid complex cfg in signature
+#[cfg(feature = "solana-program-mono")]
+pub fn process_account_reads(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    // debug_msg!("Executing account_read [solana-program-mono]...");
+
+    if instruction_data.is_empty() {
+        // debug_msg!("Error: Instruction data is empty. Expected 1 byte specifying number of accounts to read.");
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    let num_accounts_to_read = instruction_data[0] as usize;
+
+    if accounts.len() < num_accounts_to_read {
+        // debug_msg!(
+        //     "Error: Not enough accounts provided. Expected at least {}, found {}.",
+        //     num_accounts_to_read,
+        //     accounts.len()
+        // );
         return Err(ProgramError::NotEnoughAccountKeys);
     }
 

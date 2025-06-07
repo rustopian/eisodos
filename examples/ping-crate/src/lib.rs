@@ -1,7 +1,7 @@
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(any(feature = "std", feature = "solana-program-mono")), no_std)]
 
-// === no_std specific setup ===
-#[cfg(not(feature = "std"))]
+// === no_std specific setup (pinocchio) ===
+#[cfg(feature = "no_std")]
 use pinocchio::{
     ProgramResult, // Use Pinocchio's ProgramResult
     pubkey::Pubkey, // Import Pinocchio's Pubkey
@@ -17,12 +17,21 @@ no_allocator!();
 nostd_panic_handler!();
 // ============================
 
-// === std specific setup ===
+// === std specific setup (broken-out crates) ===
 #[cfg(feature = "std")]
 use {
     solana_account_info::AccountInfo,
     solana_entrypoint::ProgramResult,
     solana_pubkey::Pubkey,
+};
+// =========================
+
+// === solana-program-mono specific setup ===
+#[cfg(feature = "solana-program-mono")]
+use solana_program::{
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+    pubkey::Pubkey,
 };
 // =========================
 
@@ -32,6 +41,8 @@ pub mod instruction {
     #[cfg(feature = "no_std")]
     use crate::{Pubkey, AccountInfo, ProgramResult};
     #[cfg(feature = "std")]
+    use crate::{Pubkey, AccountInfo, ProgramResult};
+    #[cfg(feature = "solana-program-mono")]
     use crate::{Pubkey, AccountInfo, ProgramResult};
 
     // Function to be benchmarked

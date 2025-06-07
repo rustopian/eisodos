@@ -17,5 +17,4 @@ lint = "1.84.1"
 
 [workspace.dependencies]
 pinocchio = { version = "0.8", git = "https://github.com/rustopian/pinocchio.git", branch = "rustopian/slot-hashes-sysvar" }
-solana-program = { version = "^2.2" }
 solana-program-error = { version = "^2.2" }

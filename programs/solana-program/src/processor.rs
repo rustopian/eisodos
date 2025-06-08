@@ -2,9 +2,9 @@ use core::cmp::Ordering;
 use solana_account_info::AccountInfo;
 use solana_cpi::invoke;
 use solana_msg;
+use solana_program_error::{ProgramError, ProgramResult};
 use solana_sysvar::Sysvar;
 use solana_sysvar::{self, slot_hashes as solana_slot_hashes};
-use solana_program_error::{ProgramError, ProgramResult};
 
 #[inline(always)]
 pub fn process_ping() -> ProgramResult {
@@ -139,8 +139,8 @@ pub fn process_slot_hashes_position_midpoint(accounts: &[AccountInfo]) -> Progra
 #[cfg(test)]
 mod tests {
     use super::*;
-    use solana_hash::Hash;
     use solana_account_info::AccountInfo;
+    use solana_hash::Hash;
     use solana_pubkey::Pubkey;
     use solana_sysvar::{self, slot_hashes::SlotHashes, Sysvar};
     use std::{cell::RefCell, rc::Rc};

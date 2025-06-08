@@ -147,9 +147,9 @@ pub unsafe fn process_slot_hashes_position_naive_unchecked(
                         break;
                     }
                     // Remember: SlotHashes are stored in descending order
-                    core::cmp::Ordering::Less => high = mid_idx, /* mid_slot < target_slot, so
-                                                                   * target is in lower indices
-                                                                   * (left half) */
+                    core::cmp::Ordering::Less => high = mid_idx, /* mid_slot < target_slot, so */
+                    // target is in lower indices
+                    // (left half)
                     core::cmp::Ordering::Greater => low = mid_idx + 1, /* mid_slot > target_slot,
                                                                         * so target is in higher
                                                                         * indices (right half) */

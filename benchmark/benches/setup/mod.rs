@@ -3,18 +3,18 @@ pub mod runner;
 // Bring crates into scope
 use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
 use solana_account::Account;
-use solana_instruction::{AccountMeta, Instruction};
-use solana_logger;
-use solana_program;
 // Imports needed for SlotHashes construction
 // Use correct paths for 1.18
 use solana_clock::Slot;
 use solana_hash::Hash;
+use solana_instruction::{AccountMeta, Instruction};
+use solana_logger;
+use solana_program;
+use solana_pubkey::Pubkey;
 // SlotHash is a type alias (Slot, Hash)
 use solana_slot_hashes::SlotHash;
 // Use Sysvar ID from solana_program
 use solana_sysvar::ID as SYSVAR_PROGRAM_ID;
-use solana_pubkey::Pubkey;
 use std::vec;
 
 // Enum to control slot decrement behavior in mock data generation

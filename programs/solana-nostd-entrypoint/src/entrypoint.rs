@@ -8,11 +8,11 @@ use {
             process_slot_hashes_get_hash_interpolated, process_slot_hashes_position_interpolated,
         },
     },
+    solana_entrypoint::ProgramResult,
+    solana_log,
     solana_nostd_entrypoint::{
         basic_panic_impl, entrypoint_nostd, noalloc_allocator, NoStdAccountInfo,
     },
-    solana_entrypoint::ProgramResult,
-    solana_log,
     solana_pubkey::Pubkey,
 };
 

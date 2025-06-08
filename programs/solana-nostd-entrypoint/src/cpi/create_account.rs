@@ -1,6 +1,6 @@
 use super::invoke_unchecked;
-use solana_nostd_entrypoint::{InstructionC, NoStdAccountInfo};
 use solana_entrypoint::ProgramResult;
+use solana_nostd_entrypoint::{InstructionC, NoStdAccountInfo};
 use solana_pubkey::Pubkey;
 use solana_system_program::ID as SYSTEM_PROGRAM_ID;
 

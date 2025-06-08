@@ -3,12 +3,12 @@ use core::cmp::Ordering;
 use core::mem::size_of;
 use {
     crate::cpi::{create_account_unchecked, transfer_unchecked},
-    solana_nostd_entrypoint::NoStdAccountInfo,
-    solana_sysvar::slot_hashes as solana_slot_hashes,
     // borsh::de::BorshDeserialize, // Removed as unused (code using it is commented out)
     solana_entrypoint::ProgramResult,
+    solana_nostd_entrypoint::NoStdAccountInfo,
     solana_program_error::ProgramError,
     solana_system_program::ID as SYSTEM_PROGRAM_ID,
+    solana_sysvar::slot_hashes as solana_slot_hashes,
 };
 
 #[inline(always)]

@@ -6,8 +6,8 @@ use super::{
 };
 use mollusk_svm_bencher::MolluskComputeUnitBencher;
 use solana_account::Account;
-use solana_instruction::Instruction;
 use solana_clock::Slot;
+use solana_instruction::Instruction;
 use solana_pubkey::Pubkey;
 use std::collections::HashMap;
 

@@ -24,7 +24,7 @@ const BENCH_SLOT_HASH_START_SLOT: u64 = 10000;
 
 // Simple deterministic PRNG for varied decrements (copied from mod.rs)
 fn simple_prng(seed: u64) -> u64 {
-    const A: u64 = 16807; // Multiplier  
+    const A: u64 = 16807; // Multiplier
     const M: u64 = 2147483647; // Modulus (2^31 - 1)
     let initial_state = if seed == 0 { 1 } else { seed };
     (A.wrapping_mul(initial_state)) % M
@@ -222,7 +222,7 @@ fn main() {
                             is_writable: spec.is_writable,
                         });
                         accounts_for_bench.push((sys_prog_pk, account_to_add));
-                        
+
                         println!(
                             "Executor: Setting up account '{}({})': {}, signer: {}, writable: {}, \
                              lamports: {}, data_len: {}, owner: {}, executable: {}",
@@ -242,22 +242,30 @@ fn main() {
                         // **not** be executable, otherwise the runtime
                         // rejects instructions like `transfer` or `create_account`.
                         is_executable = final_pubkey == solana_system_program::id();
-                        
+
                         // Special handling for SlotHashes sysvar account
                         let (actual_pubkey, account_data) = if spec.role_name == "slot_hashes" {
                             let slothashes_pubkey = Pubkey::new_from_array(SLOTHASHES_ID);
-                            println!("Executor: Using proper SlotHashes sysvar account key: {}", slothashes_pubkey);
-                            println!("Executor: Populating SlotHashes sysvar account with mock data");
+                            println!(
+                                "Executor: Using proper SlotHashes sysvar account key: {}",
+                                slothashes_pubkey
+                            );
+                            println!(
+                                "Executor: Populating SlotHashes sysvar account with mock data"
+                            );
                             let mock_data = generate_mock_slot_hashes_data();
                             (slothashes_pubkey, mock_data)
                         } else if final_pubkey.to_bytes() == SLOTHASHES_ID {
-                            println!("Executor: Detected SlotHashes sysvar by key, populating with mock data");
+                            println!(
+                                "Executor: Detected SlotHashes sysvar by key, populating with \
+                                 mock data"
+                            );
                             let mock_data = generate_mock_slot_hashes_data();
                             (final_pubkey, mock_data)
                         } else {
                             (final_pubkey, vec![0u8; spec.data_len])
                         };
-                        
+
                         account_to_add = Account {
                             lamports: spec.lamports,
                             data: account_data.clone(),
@@ -271,8 +279,9 @@ fn main() {
                             is_writable: spec.is_writable,
                         });
                         accounts_for_bench.push((actual_pubkey, account_to_add));
-                        role_name_to_actual_pubkey_map.insert(spec.role_name.clone(), actual_pubkey);
-                        
+                        role_name_to_actual_pubkey_map
+                            .insert(spec.role_name.clone(), actual_pubkey);
+
                         println!(
                             "Executor: Setting up account '{}({})': {}, signer: {}, writable: {}, \
                              lamports: {}, data_len: {}, owner: {}, executable: {}",

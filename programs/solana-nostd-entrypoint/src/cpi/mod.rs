@@ -1,5 +1,5 @@
-use solana_nostd_entrypoint::{AccountInfoC, InstructionC, NoStdAccountInfo};
 use solana_entrypoint::ProgramResult;
+use solana_nostd_entrypoint::{AccountInfoC, InstructionC, NoStdAccountInfo};
 use solana_program_error::ProgramError;
 use std::mem::MaybeUninit;
 

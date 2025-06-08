@@ -34,4 +34,29 @@ account_setups = [
 
 # instruction_data (e.g., specifying how many accounts to read) will be provided
 # by the eisodos-bench-executor. This TOML configures the build, and the executor
-# can be invoked multiple times with different instruction data for the same build. 
+# can be invoked multiple times with different instruction data for the same build.
+
+[[benchmark]]
+id = "account_read_multiple_solana_nostd"
+
+# Path to the function within the account-read-crate to be benchmarked
+function = "account_read_crate::processor::process_account_reads"
+
+# List of entry points to test against
+entrypoints = ["solana-nostd-entrypoint"]
+
+# Feature sets to test for each entrypoint
+features = [
+    { entrypoint = "solana-nostd-entrypoint", features = ["solana-nostd-entrypoint"] }
+]
+
+# Defines different account setups to run the benchmark against.
+account_setups = [
+    { count = 1 },
+    { count = 2 },
+    { count = 4 },
+    { count = 8 },
+    { count = 16 },
+    { count = 32 },
+    { count = 64 },
+] 

@@ -22,11 +22,8 @@ macro_rules! debug_msg {
 // Directly import ProgramResult from solana_program_error as requested
 // This assumes solana_program_error crate v2.2 exports this type.
 use solana_program_error::ProgramResult;
-use solana_program_error::ProgramError; // Also import ProgramError
 
 // Import the function to be benchmarked
-// These placeholders will be replaced by the script
-#[cfg(not(feature = "no_bench_function"))] // Conditionally compile based on presence of placeholders
 use %%RUST_IMPORT_CRATE_NAME%%::%%BENCHMARK_FUNCTION_MODULE%%::%%BENCHMARK_FUNCTION_NAME%% as benchmark_function_to_call;
 
 // Solana Program entrypoint

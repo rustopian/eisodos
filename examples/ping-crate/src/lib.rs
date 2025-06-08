@@ -1,7 +1,7 @@
-#![cfg_attr(not(any(feature = "std", feature = "solana-program-mono")), no_std)]
+#![cfg_attr(not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono")), no_std)]
 
-// === no_std specific setup (pinocchio) ===
-#[cfg(feature = "no_std")]
+// === no_std specific setup (pinocchio only) ===
+#[cfg(all(feature = "no_std", not(feature = "solana-nostd-mono")))]
 use pinocchio::{
     ProgramResult, // Use Pinocchio's ProgramResult
     pubkey::Pubkey, // Import Pinocchio's Pubkey
@@ -11,14 +11,14 @@ use pinocchio::{
 };
 
 // Handlers MUST be present for no_std SBF builds
-#[cfg(feature = "no_std")]
+#[cfg(all(feature = "no_std", not(feature = "solana-nostd-mono")))]
 no_allocator!();
-#[cfg(feature = "no_std")]
+#[cfg(all(feature = "no_std", not(feature = "solana-nostd-mono")))]
 nostd_panic_handler!();
 // ============================
 
 // === std specific setup (broken-out crates) ===
-#[cfg(feature = "std")]
+#[cfg(all(any(feature = "std", feature = "solana-program"), not(feature = "solana-nostd-mono")))]
 use {
     solana_account_info::AccountInfo,
     solana_entrypoint::ProgramResult,
@@ -27,7 +27,7 @@ use {
 // =========================
 
 // === solana-program-mono specific setup ===
-#[cfg(feature = "solana-program-mono")]
+#[cfg(all(feature = "solana-program-mono", not(feature = "solana-nostd-mono")))]
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -35,14 +35,25 @@ use solana_program::{
 };
 // =========================
 
+// === solana-nostd-mono specific setup ===
+#[cfg(feature = "solana-nostd-mono")]
+use {
+    solana_nostd_entrypoint::NoStdAccountInfo as AccountInfo,
+    solana_program_error::ProgramResult,
+    solana_pubkey::Pubkey,
+};
+// =========================
+
 // Define a module that contains the benchmarkable function
 pub mod instruction {
     // Bring crate-level items into scope based on feature flags
-    #[cfg(feature = "no_std")]
+    #[cfg(all(feature = "no_std", not(feature = "solana-nostd-mono")))]
     use crate::{Pubkey, AccountInfo, ProgramResult};
-    #[cfg(feature = "std")]
+    #[cfg(all(any(feature = "std", feature = "solana-program"), not(feature = "solana-nostd-mono")))]
     use crate::{Pubkey, AccountInfo, ProgramResult};
-    #[cfg(feature = "solana-program-mono")]
+    #[cfg(all(feature = "solana-program-mono", not(feature = "solana-nostd-mono")))]
+    use crate::{Pubkey, AccountInfo, ProgramResult};
+    #[cfg(feature = "solana-nostd-mono")]
     use crate::{Pubkey, AccountInfo, ProgramResult};
 
     // Function to be benchmarked

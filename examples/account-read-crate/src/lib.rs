@@ -1,6 +1,6 @@
 //! Benchmark crate for testing account reading operations.
 
-#![cfg_attr(feature = "no_std", no_std)] // Enable no_std when feature is active
+#![cfg_attr(not(any(feature = "std", feature = "solana-program-mono", feature = "solana-nostd-entrypoint")), no_std)]
 
 pub mod processor;
 

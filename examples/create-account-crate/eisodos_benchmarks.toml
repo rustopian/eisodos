@@ -37,4 +37,17 @@ features = [
 instruction_payload.tag = 0
 instruction_payload.lamports = 500000000
 instruction_payload.space = 10
-# Accounts: Funder, NewAccount (SystemProgram implicit for Pinocchio CPI) 
+# Accounts: Funder, NewAccount (SystemProgram implicit for Pinocchio CPI)
+
+[[benchmark]]
+id = "create_account_solana_nostd"
+function = "create_account_crate::nostd_entrypoint_benches::run_create_account_bench"
+entrypoints = ["solana-nostd-entrypoint"]
+features = [
+    { entrypoint = "solana-nostd-entrypoint", features = ["solana-nostd-entrypoint"] }
+]
+# Using dotted keys for instruction_payload
+instruction_payload.tag = 0
+instruction_payload.lamports = 500000000
+instruction_payload.space = 10
+# Accounts: Funder, NewAccount, SystemProgram (to be handled by executor setup) 

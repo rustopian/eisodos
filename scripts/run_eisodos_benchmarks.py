@@ -9,6 +9,7 @@ import sys
 import os
 import json
 import time
+import textwrap
 
 # --- Color Constants ---
 class Colors:
@@ -536,6 +537,13 @@ def main():
                 elif entrypoint_name == "solana-program-mono":
                     # Use the monolithic solana-program crate instead of broken-out crates
                     entrypoint_sdk_dep_line = 'solana-program = { version = "^2.2", default-features = false }'
+                elif entrypoint_name == "solana-nostd-entrypoint":
+                    # Use solana-nostd-entrypoint with minimal solana crates for no-std
+                    entrypoint_sdk_dep_line = (
+                        'solana-nostd-entrypoint = { version = "0.6", default-features = false }\n'
+                        'solana-program-error = { version = "^2.2", default-features = false }\n'
+                        'solana-pubkey = { version = "^2.2", default-features = false }'
+                    )
 
                 # Prepare placeholder replacements
                 replacements = {
@@ -706,6 +714,8 @@ def main():
                              print_build_info(f"--- Executing Solana benchmark for: {artifact_path} ---")
                          elif entrypoint_name == "solana-program-mono":
                              print_build_info(f"--- Executing Solana (mono) benchmark for: {artifact_path} ---")
+                         elif entrypoint_name == "solana-nostd-entrypoint":
+                             print_build_info(f"--- Executing Solana NoStd Entrypoint benchmark for: {artifact_path} ---")
                          else:
                              print_warning(f"Unknown entrypoint {entrypoint_name} for execution.")
                              continue # Skip execution if entrypoint unknown
@@ -907,19 +917,67 @@ def main():
         # Console summary in simplified format
         print_section("\n=== Benchmark Summary ===")
         simple_headers = ["crate", "instruction", "entrypoint", "build_time", "program_size", "CUs"]
-        print(" | ".join(simple_headers))
-        print(" | ".join(["---"] * len(simple_headers)))
+
+        # Define column widths for proper alignment
+        col_widths = [12, 12, 20, 12, 14, 8]
+        
+        def wrap_cell_content(content, width):
+            """Wrap cell content to fit within the specified width."""
+            if not content or content == "N/A":
+                return [content] if content else [""]
+            return textwrap.wrap(str(content), width=width) or [str(content)]
+        
+        def print_multiline_row(row_values, col_widths):
+            """Print a table row that can span multiple lines."""
+            # Wrap each cell's content
+            wrapped_cells = []
+            max_lines = 1
+            
+            for value, width in zip(row_values, col_widths):
+                wrapped = wrap_cell_content(value, width)
+                wrapped_cells.append(wrapped)
+                max_lines = max(max_lines, len(wrapped))
+            
+            # Print each line of the row
+            for line_idx in range(max_lines):
+                line_parts = []
+                for cell_lines, width in zip(wrapped_cells, col_widths):
+                    if line_idx < len(cell_lines):
+                        content = cell_lines[line_idx]
+                    else:
+                        content = ""  # Empty content for cells that don't span this many lines
+                    line_parts.append(f"{content:<{width}}")
+                print("| " + " | ".join(line_parts) + " |")
+
+        # Print headers
+        print_multiline_row(simple_headers, col_widths)
+        
+        # Print separator
+        separator_parts = ["-" * w for w in col_widths]
+        print("| " + " | ".join(separator_parts) + " |")
+
+        # Print each result row with wrapping
         for result in all_benchmark_results:
             cu = result.get("MedianComputeUnits", "N/A")
             build_time = result.get("BuildTimeSeconds", "N/A")
             if isinstance(build_time, (int, float)):
-                build_time = f"{build_time}s"
+                build_time = f"{build_time:.2f}s"
             
             program_size = result.get("ProgramSizeBytes", "N/A") 
             if isinstance(program_size, (int, float)):
                 program_size = f"{program_size / 1024:.1f}KB"
             
-            print(f"{result.get('crate', 'N/A')} | {result.get('instruction', 'N/A')} | {result.get('entrypoint', 'N/A')} | {build_time} | {program_size} | {cu}")
+            # Format values for display (no truncation)
+            values = [
+                result.get('crate', 'N/A'),
+                result.get('instruction', 'N/A'),
+                result.get('entrypoint', 'N/A'),
+                str(build_time),
+                str(program_size),
+                str(cu)
+            ]
+            
+            print_multiline_row(values, col_widths)
     else:
         print("\nNo benchmark results to report.")
 

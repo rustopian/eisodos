@@ -9,6 +9,7 @@ publish = false
 default = ["no_std"]
 solana-program = ["solana-account-info","solana-entrypoint","solana-msg","solana-pubkey"]
 solana-program-mono = ["dep:solana-program"]
+solana-nostd-entrypoint = ["dep:solana-nostd-entrypoint", "solana-program-error", "solana-pubkey", "solana-syscalls"]
 no_std = ["pinocchio"]
 provide-handlers = []
 
@@ -19,6 +20,9 @@ solana-entrypoint = { package = "solana-program-entrypoint", version = "2.2.1", 
 solana-msg = { version = "2.2.1", default-features = false, optional = true }
 solana-pubkey = { version = "2.2.0", default-features = false, optional = true }
 solana-program = { version = "2.2.0", default-features = false, optional = true }
+solana-nostd-entrypoint = { version = "0.6", default-features = false, optional = true }
+solana-program-error = { version = "2.2.2", default-features = false, optional = true }
+solana-syscalls = { version = "2.2.2", default-features = false, optional = true }
 
 [lib]
 crate-type = ["cdylib", "lib"] 

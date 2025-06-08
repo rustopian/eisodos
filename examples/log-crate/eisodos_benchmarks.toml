@@ -26,4 +26,13 @@ entrypoints = ["pinocchio"]
 features = [
     { entrypoint = "pinocchio", features = ["no_std"] } # Or simply [] if no_std is implicit or default
 ]
+# No specific input_data or account_setups needed for basic log test
+
+[[benchmark]]
+id = "log_solana_nostd"
+function = "log_crate::nostd_entrypoint_benches::run_log_bench"
+entrypoints = ["solana-nostd-entrypoint"]
+features = [
+    { entrypoint = "solana-nostd-entrypoint", features = ["solana-nostd-entrypoint"] }
+]
 # No specific input_data or account_setups needed for basic log test 

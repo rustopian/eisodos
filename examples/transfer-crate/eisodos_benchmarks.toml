@@ -35,4 +35,16 @@ features = [
 # Using dotted keys for instruction_payload
 instruction_payload.tag = 0
 instruction_payload.amount = 1000000000
-# Accounts: Source, Destination (SystemProgram implicit for Pinocchio CPI) 
+# Accounts: Source, Destination (SystemProgram implicit for Pinocchio CPI)
+
+[[benchmark]]
+id = "transfer_solana_nostd"
+function = "transfer_crate::nostd_entrypoint_benches::run_transfer_bench"
+entrypoints = ["solana-nostd-entrypoint"]
+features = [
+    { entrypoint = "solana-nostd-entrypoint", features = ["solana-nostd-entrypoint"] }
+]
+# Using dotted keys for instruction_payload
+instruction_payload.tag = 0
+instruction_payload.amount = 1000000000
+# Accounts: Source, Destination, SystemProgram (to be handled by executor setup) 

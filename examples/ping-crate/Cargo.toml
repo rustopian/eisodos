@@ -9,20 +9,7 @@ publish = false
 [lib]
 crate-type = ["cdylib", "lib"] # Keep existing types
 
-[features]
-default = ["no_std"]
-std = ["solana-account-info", "solana-entrypoint", "solana-pubkey"]
-solana-program = ["solana-account-info", "solana-entrypoint", "solana-pubkey"]
-solana-program-mono = ["dep:solana-program"]
-solana-nostd-mono = ["solana-nostd-entrypoint", "solana-program-error", "solana-pubkey"]
-no_std = ["pinocchio"]
-provide-handlers = []
-
 [dependencies]
-pinocchio = { version = "0.8", git = "https://github.com/rustopian/pinocchio.git", branch = "rustopian/slot-hashes-sysvar", optional = true }
 solana-account-info = { version = "2.2.1", default-features = false, optional = true }
 solana-entrypoint = { package = "solana-program-entrypoint", version = "2.2.1", default-features = false, optional = true }
 solana-pubkey = { version = "2.2.0", default-features = false, optional = true }
-solana-program = { version = "2.2.0", default-features = false, optional = true }
-solana-nostd-entrypoint = { version = "0.6", default-features = false, optional = true }
-solana-program-error = { version = "2.2.2", default-features = false, optional = true }

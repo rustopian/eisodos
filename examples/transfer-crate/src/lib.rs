@@ -43,7 +43,6 @@ use {
     solana_nostd_entrypoint_dep::NoStdAccountInfo as AccountInfo,
     solana_program_error::{ProgramResult, ProgramError},
     solana_nostd_entrypoint_dep::solana_program::pubkey::Pubkey,
-    solana_syscalls,
 };
 // =========================
 
@@ -200,7 +199,16 @@ pub mod nostd_entrypoint_benches {
         // Invoke system program
         #[cfg(target_os = "solana")]
         unsafe {
-            solana_syscalls::sol_invoke_signed_c(
+            extern "C" {
+                fn sol_invoke_signed_c(
+                    instruction_addr: *const u8,
+                    account_infos_addr: *const u8,
+                    account_infos_len: u64,
+                    seed_addr: *const u8,
+                    seed_len: u64,
+                ) -> u64;
+            }
+            sol_invoke_signed_c(
                 &instruction as *const InstructionC as *const u8,
                 infos.as_ptr() as *const u8,
                 infos.len() as u64,

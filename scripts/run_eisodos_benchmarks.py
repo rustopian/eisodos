@@ -10,6 +10,7 @@ import os
 import json
 import time
 import textwrap
+import re
 
 # --- Color Constants ---
 class Colors:
@@ -70,6 +71,128 @@ BENCHED_CRATE_COPY_DIR_NAME = "benched_crate_src" # Dir name for the copied sour
 
 # Placeholder line to find and replace in the template Cargo.toml
 PINOCCHIO_PLACEHOLDER_LINE = "pinocchio = { workspace = true }"
+
+# --- Rewrite Matrix for Import Path Translation ---
+REWRITE_TABLE = {
+    # BUILD TARGET  →  { pattern : replacement }
+    "pinocchio": {
+        # monolithic sdk
+        r"\bsolana_program::":          "pinocchio::",
+        # breakout crates
+        r"\bsolana_account_info::":     "pinocchio::account_info::",
+        r"\bsolana_pubkey::":           "pinocchio::pubkey::",
+        r"\bsolana_program_error::":    "pinocchio::program_error::",
+        r"\bsolana_entrypoint::":       "pinocchio::",
+        r"\bsolana_msg::":              "pinocchio::log::",
+        # Handle specific types that may need path changes
+        r"\bProgramResult":             "ProgramResult",
+        r"\bAccountInfo":               "AccountInfo", 
+        r"\bPubkey":                    "Pubkey",
+    },
+    "solana-program": {  # breakout → breakout, pinocchio → breakout
+        r"\bpinocchio::account_info::": "solana_account_info::",
+        r"\bpinocchio::pubkey::":       "solana_pubkey::",
+        r"\bpinocchio::program_error::": "solana_program_error::",
+        r"\bpinocchio::":               "solana_entrypoint::",
+        r"\bpinocchio::log::":          "solana_msg::",
+        # Keep solana breakout crates as-is (no replacement needed)
+    },
+    "solana-program-mono": {  # breakout → mono, pinocchio → mono
+        r"\bsolana_account_info::":     "solana_program::account_info::",
+        r"\bsolana_pubkey::":           "solana_program::pubkey::",
+        r"\bsolana_program_error::":    "solana_program::program_error::",
+        r"\bsolana_entrypoint::":       "solana_program::entrypoint::",
+        r"\bsolana_msg::":              "solana_program::msg::",
+        r"\bpinocchio::account_info::": "solana_program::account_info::",
+        r"\bpinocchio::pubkey::":       "solana_program::pubkey::",
+        r"\bpinocchio::program_error::": "solana_program::program_error::",
+        r"\bpinocchio::":               "solana_program::entrypoint::",
+        r"\bpinocchio::log::":          "solana_program::msg::",
+    },
+    "solana-nostd-entrypoint": {
+        # Convert to nostd-entrypoint equivalents
+        r"\bsolana_account_info::AccountInfo": "solana_nostd_entrypoint::NoStdAccountInfo",
+        r"\bpinocchio::account_info::AccountInfo": "solana_nostd_entrypoint::NoStdAccountInfo",
+        r"\bsolana_pubkey::":           "solana_pubkey::",
+        r"\bpinocchio::pubkey::":       "solana_pubkey::",
+        r"\bsolana_program_error::":    "solana_program_error::",
+        r"\bpinocchio::program_error::": "solana_program_error::",
+        r"\bsolana_entrypoint::ProgramResult":     "solana_program_error::ProgramResult",
+        r"\bpinocchio::ProgramResult":            "solana_program_error::ProgramResult",
+    },
+}
+
+# --- Entrypoint Dependency Definitions ---
+ENTRYPOINT_DEPS = {
+    "pinocchio": '''pinocchio = { workspace = true, default-features = false }''',
+    
+    "solana-program": '''solana-account-info = { version = "^2.2", default-features = false }
+solana-entrypoint = { package = "solana-program-entrypoint", version = "^2.2", default-features = false }
+solana-program-error = { version = "^2.2", default-features = false }
+solana-pubkey = { version = "^2.2", default-features = false }
+solana-msg = { version = "^2.2", default-features = false }''',
+    
+    "solana-program-mono": '''solana-program = { version = "^2.2", default-features = false }''',
+    
+    "solana-nostd-entrypoint": '''solana-nostd-entrypoint = { version = "0.6", default-features = false }
+solana-program-error = { version = "^2.2", default-features = false }
+solana-pubkey = { version = "^2.2", default-features = false }''',
+}
+
+# Define dependencies that must be ensured inside the *benched crate* Cargo.toml for each entrypoint
+BENCHED_CRATE_DEPS = {
+    "pinocchio": {
+        "pinocchio": {
+            "version": "0.8",
+            "git": "https://github.com/rustopian/pinocchio.git",
+            "branch": "rustopian/slot-hashes-sysvar",
+            "default-features": False,
+        }
+    },
+    "solana-program": {
+        "solana-account-info": {
+            "version": "^2.2",
+            "default-features": False,
+        },
+        "solana-entrypoint": {
+            "package": "solana-program-entrypoint",
+            "version": "^2.2",
+            "default-features": False,
+        },
+        "solana-program-error": {
+            "version": "^2.2",
+            "default-features": False,
+        },
+        "solana-pubkey": {
+            "version": "^2.2",
+            "default-features": False,
+        },
+        "solana-msg": {
+            "version": "^2.2",
+            "default-features": False,
+        },
+    },
+    "solana-program-mono": {
+        "solana-program": {
+            "version": "^2.2",
+            "default-features": False,
+        }
+    },
+    "solana-nostd-entrypoint": {
+        "solana-nostd-entrypoint": {
+            "version": "0.6",
+            "default-features": False,
+        },
+        "solana-program-error": {
+            "version": "^2.2",
+            "default-features": False,
+        },
+        "solana-pubkey": {
+            "version": "^2.2",
+            "default-features": False,
+        }
+    },
+}
 
 # --- Helper Functions ---
 
@@ -294,6 +417,158 @@ def get_package_name_from_manifest(crate_dir):
         print_error(f"reading or parsing manifest {manifest_path}: {e}")
         return None
 
+def rewrite_sources_for_entrypoint(entrypoint_name: str, crate_root: pathlib.Path):
+    """
+    Rewrite source files in the copied crate to use the correct import paths
+    for the target entrypoint.
+    """
+    patterns = REWRITE_TABLE.get(entrypoint_name, {})
+    if not patterns:
+        print(f"No rewrite patterns defined for entrypoint '{entrypoint_name}'. Skipping source rewrite.")
+        return
+    
+    print(f"Rewriting source imports for entrypoint: {entrypoint_name}")
+    files_modified = 0
+    
+    for rust_file in crate_root.rglob("*.rs"):
+        try:
+            original_content = rust_file.read_text(encoding="utf-8")
+            modified_content = original_content
+            
+            # Apply each pattern replacement
+            for pattern, replacement in patterns.items():
+                modified_content = re.sub(pattern, replacement, modified_content)
+            
+            # Only write back if content changed
+            if modified_content != original_content:
+                rust_file.write_text(modified_content, encoding="utf-8")
+                files_modified += 1
+                print(f"  Modified: {rust_file.relative_to(crate_root)}")
+        
+        except Exception as e:
+            print_warning(f"Failed to rewrite {rust_file}: {e}")
+    
+    if files_modified > 0:
+        print_success(f"Rewrote imports in {files_modified} source files for '{entrypoint_name}' entrypoint.")
+    else:
+        print(f"No source files needed import rewriting for '{entrypoint_name}' entrypoint.")
+
+    # After replacements, possibly add pinocchio handlers
+    if entrypoint_name == "pinocchio":
+        ensure_pinocchio_handlers(crate_root)
+    elif entrypoint_name == "solana-nostd-entrypoint":
+        ensure_nostd_entrypoint_alias(crate_root)
+    # Always ensure manifest deps
+    ensure_manifest_deps_for_entrypoint(entrypoint_name, crate_root)
+
+def ensure_pinocchio_handlers(crate_root: pathlib.Path):
+    """Ensure crate is #![no_std] and has pinocchio no_allocator/nostd_panic_handler wiring."""
+    lib_rs = crate_root / "src" / "lib.rs"
+    if not lib_rs.is_file():
+        return
+
+    try:
+        content = lib_rs.read_text(encoding="utf-8")
+        needs_write = False
+
+        # 1. Guarantee #![no_std]
+        if "#![no_std]" not in content and "#![cfg_attr(" not in content:
+            content = "#![no_std]\n" + content
+            needs_write = True
+
+        # 2. Ensure use + macro calls
+        if "use pinocchio::{no_allocator, nostd_panic_handler}" not in content:
+            content = content.replace("use {", "use pinocchio::{no_allocator, nostd_panic_handler};\nuse {", 1)
+            needs_write = True
+
+        # Determine insertion point for macro calls after closing of first use-group ending with '};'
+        if "no_allocator!();" not in content or "nostd_panic_handler!();" not in content:
+            # Remove any previous wrong macro placement inside use group
+            content_lines = content.splitlines()
+            content_lines = [l for l in content_lines if not l.strip().startswith("no_allocator!()") and not l.strip().startswith("nostd_panic_handler!()")]
+            content = "\n".join(content_lines)
+
+            insert_pos = content.find("};")
+            if insert_pos != -1:
+                insert_pos += 3  # after '};'
+            else:
+                # fallback: append after first use line group
+                insert_pos = content.find("\n")  # after first line
+            macros_to_insert = []
+            if "no_allocator!();" not in content:
+                macros_to_insert.append("no_allocator!();")
+            if "nostd_panic_handler!();" not in content:
+                macros_to_insert.append("nostd_panic_handler!();")
+            macro_block = "\n" + "\n".join(macros_to_insert) + "\n"
+            content = content[:insert_pos] + macro_block + content[insert_pos:]
+            needs_write = True
+
+        if needs_write:
+            lib_rs.write_text(content, encoding="utf-8")
+            print_success("Updated src/lib.rs for pinocchio handlers and no_std")
+    except Exception as e:
+        print_warning(f"Failed to patch {lib_rs}: {e}")
+
+def ensure_nostd_entrypoint_alias(crate_root: pathlib.Path):
+    """Add `as AccountInfo` alias for NoStdAccountInfo if missing."""
+    lib_rs = crate_root / "src" / "lib.rs"
+    if not lib_rs.is_file():
+        return
+    try:
+        content = lib_rs.read_text(encoding="utf-8")
+        if "NoStdAccountInfo as AccountInfo" not in content:
+            content = content.replace("NoStdAccountInfo", "NoStdAccountInfo as AccountInfo")
+            lib_rs.write_text(content, encoding="utf-8")
+            print_success("Added alias `as AccountInfo` for NoStdAccountInfo")
+    except Exception as e:
+        print_warning(f"Failed to patch alias in {lib_rs}: {e}")
+
+def ensure_manifest_deps_for_entrypoint(entrypoint_name: str, crate_root: pathlib.Path):
+    """Ensure benched crate Cargo.toml has the deps required for rewritten imports."""
+    deps_to_add = BENCHED_CRATE_DEPS.get(entrypoint_name)
+    if not deps_to_add:
+        return
+    manifest_path = crate_root / "Cargo.toml"
+    if not manifest_path.is_file():
+        return
+    try:
+        manifest_data = toml.load(manifest_path)
+    except Exception as e:
+        print_warning(f"Failed to parse manifest {manifest_path}: {e}")
+        return
+
+    deps_table = manifest_data.setdefault("dependencies", {})
+    changed = False
+
+    # Remove old sdk deps that might conflict
+    ALL_KNOWN_SDK_DEPS = [
+        "pinocchio",
+        "solana-program",
+        "solana-account-info",
+        "solana-entrypoint",
+        "solana-program-error",
+        "solana-pubkey",
+        "solana-msg",
+        "solana-nostd-entrypoint",
+    ]
+    for key in list(deps_table.keys()):
+        if key in ALL_KNOWN_SDK_DEPS:
+            deps_table.pop(key)
+            changed = True
+
+    # Insert required deps
+    for dep_name, dep_info in deps_to_add.items():
+        if dep_name not in deps_table:
+            deps_table[dep_name] = dep_info
+            changed = True
+
+    if changed:
+        try:
+            manifest_path.write_text(toml.dumps(manifest_data), encoding="utf-8")
+            print_success(f"Patched dependencies in benched crate manifest for {entrypoint_name}")
+        except Exception as e:
+            print_warning(f"Failed to update manifest {manifest_path}: {e}")
+
 # --- Main Logic ---
 
 def main():
@@ -416,11 +691,23 @@ def main():
                 print_subsection(f"---> Entrypoint: {entrypoint_name}")
 
                 # Find features for this specific entrypoint
-                entrypoint_features = []
+                entrypoint_features_original = []
                 for fc in features_config:
                     if fc.get("entrypoint") == entrypoint_name:
-                        entrypoint_features = fc.get("features", [])
-                        break # Found the features for this entrypoint
+                        entrypoint_features_original = fc.get("features", [])
+                        break
+
+                # Validate features exist in benched crate; drop missing ones
+                benched_manifest_features = []
+                try:
+                    with open((crate_dir/"Cargo.toml"), "r", encoding="utf-8") as mf:
+                        benched_manifest_features = list(toml.loads(mf.read()).get("features", {}).keys())
+                except Exception:
+                    pass
+
+                entrypoint_features = [f for f in entrypoint_features_original if f in benched_manifest_features]
+                if entrypoint_features_original and not entrypoint_features:
+                    print_warning(f"Requested features {entrypoint_features_original} for {entrypoint_name} not in crate; omitting.")
 
                 # Choose template files based on entrypoint
                 if entrypoint_name == "pinocchio":
@@ -511,6 +798,10 @@ def main():
                                 benched_manifest_path.write_text(toml.dumps(manifest_data), encoding="utf-8")
                         except Exception as sanitize_err:
                             print(f"Warning: Failed to sanitize copied crate manifest {benched_manifest_path}: {sanitize_err}", file=sys.stderr)
+                    
+                    # --- Rewrite source imports for the target entrypoint ---
+                    rewrite_sources_for_entrypoint(entrypoint_name, benched_crate_dest_path)
+                    
                 except Exception as e:
                     print(f"Error copying crate source: {e}", file=sys.stderr)
                     continue
@@ -521,29 +812,11 @@ def main():
                 # Use entrypoint_name to build the SDK path dynamically
                 relative_eisodos_sdk_path = f"{relative_to_eisodos_root}/programs/{entrypoint_name}"
                 
-                # Determine SDK dependency line for the runner template
-                entrypoint_sdk_dep_line = ""
-                if entrypoint_name == "pinocchio":
-                    entrypoint_sdk_dep_line = 'pinocchio = { workspace = true, default-features = false } # For runner template'
-                elif entrypoint_name == "solana-program":
-                    # Minimal set of SDK crates the template actually uses.
-                    entrypoint_sdk_dep_line = (
-                        'solana-account-info = { version = "^2.2", default-features = false }\n'
-                        'solana-entrypoint = { package = "solana-program-entrypoint", version = "^2.2", default-features = false }\n'
-                        'solana-program-error = { version = "^2.2", default-features = false }\n'
-                        'solana-pubkey = { version = "^2.2", default-features = false }\n'
-                        'solana-msg = { version = "^2.2", default-features = false }'
-                    )
-                elif entrypoint_name == "solana-program-mono":
-                    # Use the monolithic solana-program crate instead of broken-out crates
-                    entrypoint_sdk_dep_line = 'solana-program = { version = "^2.2", default-features = false }'
-                elif entrypoint_name == "solana-nostd-entrypoint":
-                    # Use solana-nostd-entrypoint with minimal solana crates for no-std
-                    entrypoint_sdk_dep_line = (
-                        'solana-nostd-entrypoint = { version = "0.6", default-features = false }\n'
-                        'solana-program-error = { version = "^2.2", default-features = false }\n'
-                        'solana-pubkey = { version = "^2.2", default-features = false }'
-                    )
+                # Determine SDK dependency line for the runner template using the ENTRYPOINT_DEPS mapping
+                entrypoint_sdk_dep_line = ENTRYPOINT_DEPS.get(entrypoint_name)
+                if not entrypoint_sdk_dep_line:
+                    print_warning(f"No dependency definition found for entrypoint '{entrypoint_name}'. Skipping.")
+                    continue
 
                 # Prepare placeholder replacements
                 replacements = {

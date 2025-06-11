@@ -7,7 +7,7 @@ use pinocchio::{
 };
 
 #[cfg(any(feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-entrypoint"))]
-pub mod solana_benches {
+pub mod log_benches {
     pub fn run_log_bench(_program_id: &Pubkey, _accounts: &[AccountInfo], _instruction_data: &[u8]) -> ProgramResult {
         // Use msg! macro for logging in BPF programs
         msg!("Hello from Solana BPF log benchmark!");
@@ -16,7 +16,7 @@ pub mod solana_benches {
 }
 
 #[cfg(feature = "no_std")]
-pub mod pinocchio_benches {
+pub mod log_benches {
     pub fn run_log_bench(
         _program_id: &Pubkey, 
         _accounts: &[AccountInfo],

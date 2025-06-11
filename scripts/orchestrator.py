@@ -92,16 +92,19 @@ def _copy_and_prepare_benched_crate(crate_dir: pathlib.Path, entrypoint_name: st
     # Rewrite imports + ensure deps
     rewrite_sources_for_entrypoint(entrypoint_name, dest_dir)
 
-    # Ensure pinocchio crates expose a `no_std` feature before workspace parsing
-    if entrypoint_name == "pinocchio":
-        try:
-            manifest_data = toml.load(manifest_path)
-            feats = manifest_data.setdefault("features", {})
-            if "no_std" not in feats:
-                feats["no_std"] = []
-                manifest_path.write_text(toml.dumps(manifest_data), "utf-8")
-        except Exception:
-            pass
+    # Ensure crates expose the appropriate features for each entrypoint
+    try:
+        manifest_data = toml.load(manifest_path)
+        feats = manifest_data.setdefault("features", {})
+        
+        if entrypoint_name in ["pinocchio", "solana-nostd-entrypoint"] and "no_std" not in feats:
+            feats["no_std"] = []
+            manifest_path.write_text(toml.dumps(manifest_data), "utf-8")
+        elif entrypoint_name in ["solana-program", "solana-program-mono"] and "std" not in feats:
+            feats["std"] = []
+            manifest_path.write_text(toml.dumps(manifest_data), "utf-8")
+    except Exception:
+        pass
 
 
 def _build_runner_workspace(
@@ -247,7 +250,12 @@ def run() -> None:
                     )
                 ep_feats = valid_ep_feats
 
+                # Automatically add appropriate features based on entrypoint
                 if ep == "pinocchio" and "no_std" not in ep_feats:
+                    ep_feats.append("no_std")
+                elif ep in ["solana-program", "solana-program-mono"] and "std" not in ep_feats:
+                    ep_feats.append("std")
+                elif ep == "solana-nostd-entrypoint" and "no_std" not in ep_feats:
                     ep_feats.append("no_std")
 
                 # 1. Prepare temp workspace

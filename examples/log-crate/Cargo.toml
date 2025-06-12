@@ -6,7 +6,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-pinocchio = { version = "0.8", git = "https://github.com/rustopian/pinocchio.git", branch = "rustopian/slot-hashes-sysvar", optional = true }
+pinocchio = { version = "0.8", git = "https://github.com/rustopian/pinocchio.git", branch = "rustopian/slot-hashes-sysvar" }
 
 [lib]
 crate-type = ["cdylib", "lib"] 

@@ -8,24 +8,8 @@ publish = false
 [lib]
 crate-type = ["cdylib", "lib"] # "lib" allows it to be used as a dependency by the benchmark runner
 
-[features]
-default = ["no_std"]
-std = ["solana-account-info", "solana-entrypoint", "solana-program-error", "solana-pubkey"]
-solana-program = ["solana-account-info", "solana-entrypoint", "solana-program-error", "solana-pubkey"]
-solana-program-mono = ["dep:solana-program"]
-solana-nostd-entrypoint = ["solana-nostd-entrypoint-dep", "solana-program-error"]
-no_std = ["pinocchio"]
-provide-handlers = []
-
 [dependencies]
-pinocchio = { version = "0.8", git = "https://github.com/rustopian/pinocchio.git", branch = "rustopian/slot-hashes-sysvar", optional = true }
-solana-account-info = { version = "2.2.1", default-features = false, optional = true }
-solana-entrypoint = { package = "solana-program-entrypoint", version = "2.2.1", default-features = false, optional = true }
-solana-program-error = { version = "2.2.2", default-features = false, optional = true }
-solana-pubkey = { version = "2.2.0", default-features = false, optional = true }
-solana-program = { version = "2.2.0", default-features = false, optional = true }
-solana-nostd-entrypoint-dep = { package = "solana-nostd-entrypoint", version = "0.6", default-features = false, optional = true }
-
-# Add other common dependencies here if needed, e.g.:
-# bytemuck = { version = "1.13.1", features = ["derive"] }
-# borsh = { version = "0.10.3", features = ["derive"] } 
+solana-account-info = { version = "2.2.1", default-features = false }
+solana-entrypoint = { package = "solana-program-entrypoint", version = "2.2.1", default-features = false }
+solana-program-error = { version = "2.2.2", default-features = false }
+solana-pubkey = { version = "2.2.0", default-features = false }

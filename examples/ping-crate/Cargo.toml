@@ -10,6 +10,6 @@ publish = false
 crate-type = ["cdylib", "lib"] # Keep existing types
 
 [dependencies]
-solana-account-info = { version = "2.2.1", default-features = false, optional = true }
-solana-entrypoint = { package = "solana-program-entrypoint", version = "2.2.1", default-features = false, optional = true }
-solana-pubkey = { version = "2.2.0", default-features = false, optional = true }
+solana-account-info = { version = "2.2.1", default-features = false }
+solana-entrypoint = { package = "solana-program-entrypoint", version = "2.2.1", default-features = false }
+solana-pubkey = { version = "2.2.0", default-features = false }

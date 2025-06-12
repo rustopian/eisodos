@@ -111,7 +111,11 @@ def print_console_summary(results: List[Dict[str, Any]]) -> None:
 
         cells = [
             row.get("crate", "N/A"),
-            row.get("instruction", "N/A"),
+            (
+                f"{row.get('instruction', 'N/A')} (N={row['AccountsProcessed']})"
+                if row.get("AccountsProcessed") not in (None, 1)
+                else row.get("instruction", "N/A")
+            ),
             row.get("entrypoint", "N/A"),
             str(build_time),
             str(program_size),

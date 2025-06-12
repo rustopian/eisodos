@@ -1,7 +1,3 @@
-#![cfg_attr(not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono")), no_std)]
-
-// === no_std specific setup (Pinocchio only) ===
-#[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
 use pinocchio::{
     ProgramResult,
     pubkey::Pubkey,
@@ -12,57 +8,12 @@ use pinocchio::{
     nostd_panic_handler
 };
 
-// Handlers MUST be present for no_std SBF builds
-#[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
 no_allocator!();
-#[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
 nostd_panic_handler!();
-// ============================
-
-// === std specific setup (broken-out crates) ===
-#[cfg(all(feature = "std", not(feature = "solana-nostd-mono")))]
-use {
-    solana_account_info::AccountInfo,
-    solana_entrypoint::ProgramResult,
-    solana_pubkey::Pubkey,
-    solana_program_error::ProgramError,
-};
-// =========================
-
-// === solana-program specific setup (Solana Program broken-out crates) ===
-#[cfg(all(feature = "solana-program", not(feature = "solana-program-mono"), not(feature = "solana-nostd-mono")))]
-use {
-    solana_account_info::AccountInfo,
-    solana_entrypoint::ProgramResult,
-    solana_pubkey::Pubkey,
-    solana_program_error::ProgramError,
-};
-
-// === solana-program-mono specific setup ===
-#[cfg(all(feature = "solana-program-mono", not(feature = "solana-nostd-mono")))]
-use solana_program::{
-    account_info::AccountInfo,
-    entrypoint::ProgramResult,
-    pubkey::Pubkey,
-    program_error::ProgramError,
-};
-
-// === solana-nostd-mono specific setup ===
-#[cfg(feature = "solana-nostd-mono")]
-use {
-    solana_nostd_entrypoint::NoStdAccountInfo as AccountInfo,
-    solana_program_error::{ProgramResult, ProgramError},
-    solana_pubkey::Pubkey,
-};
-
-// Import SlotHashes only for pinocchio (no_std without solana-nostd-mono)
-// This is redundant since SlotHashes is already imported from pinocchio above
-// #[cfg(all(feature = "no_std", not(feature = "solana-nostd-mono")))]
-// use crate::SlotHashes;
 
 
 // Helper function for std feature to parse SlotHashes without expensive bincode
-#[cfg(all(feature = "std", not(feature = "solana-nostd-mono")))]
+#[cfg(feature = "std")]
 fn parse_slot_hashes_raw(data: &[u8]) -> Result<(usize, &[(u64, [u8; 32])]), ProgramError> {
     if data.len() < 8 {
         return Err(ProgramError::InvalidAccountData);
@@ -97,7 +48,7 @@ fn parse_slot_hashes_raw(data: &[u8]) -> Result<(usize, &[(u64, [u8; 32])]), Pro
     Ok((len, entries))
 }
 
-#[cfg(all(feature = "std", not(feature = "solana-nostd-mono")))]
+#[cfg(feature = "std")]
 fn find_slot_in_entries(entries: &[(u64, [u8; 32])], target_slot: u64) -> Option<&[u8; 32]> {
     // Binary search since slots are in descending order
     entries.binary_search_by(|entry| entry.0.cmp(&target_slot).reverse())
@@ -106,7 +57,7 @@ fn find_slot_in_entries(entries: &[(u64, [u8; 32])], target_slot: u64) -> Option
 }
 
 // Helper function for broken-out crates to parse SlotHashes without expensive bincode
-#[cfg(all(feature = "solana-program", not(feature = "solana-program-mono"), not(feature = "solana-nostd-mono")))]
+#[cfg(feature = "std")]
 fn parse_slot_hashes_raw(data: &[u8]) -> Result<(usize, &[(u64, [u8; 32])]), ProgramError> {
     if data.len() < 8 {
         return Err(ProgramError::InvalidAccountData);
@@ -141,7 +92,7 @@ fn parse_slot_hashes_raw(data: &[u8]) -> Result<(usize, &[(u64, [u8; 32])]), Pro
     Ok((len, entries))
 }
 
-#[cfg(all(feature = "solana-program", not(feature = "solana-program-mono"), not(feature = "solana-nostd-mono")))]
+#[cfg(feature = "std")]
 fn find_slot_in_entries(entries: &[(u64, [u8; 32])], target_slot: u64) -> Option<&[u8; 32]> {
     // Binary search since slots are in descending order
     entries.binary_search_by(|entry| entry.0.cmp(&target_slot).reverse())
@@ -150,7 +101,7 @@ fn find_slot_in_entries(entries: &[(u64, [u8; 32])], target_slot: u64) -> Option
 }
 
 // Helper function for solana-program-mono to parse SlotHashes without expensive bincode  
-#[cfg(all(feature = "solana-program-mono", not(feature = "solana-nostd-mono")))]
+#[cfg(feature = "std")]
 fn parse_slot_hashes_raw(data: &[u8]) -> Result<(usize, &[(u64, [u8; 32])]), ProgramError> {
     if data.len() < 8 {
         return Err(ProgramError::InvalidAccountData);
@@ -185,7 +136,7 @@ fn parse_slot_hashes_raw(data: &[u8]) -> Result<(usize, &[(u64, [u8; 32])]), Pro
     Ok((len, entries))
 }
 
-#[cfg(all(feature = "solana-program-mono", not(feature = "solana-nostd-mono")))]
+#[cfg(feature = "std")]
 fn find_slot_in_entries(entries: &[(u64, [u8; 32])], target_slot: u64) -> Option<&[u8; 32]> {
     // Binary search since slots are in descending order
     entries.binary_search_by(|entry| entry.0.cmp(&target_slot).reverse())
@@ -194,7 +145,7 @@ fn find_slot_in_entries(entries: &[(u64, [u8; 32])], target_slot: u64) -> Option
 }
 
 // Helper function for solana-nostd-mono to parse SlotHashes without expensive bincode  
-#[cfg(feature = "solana-nostd-mono")]
+#[cfg(feature = "std")]
 fn parse_slot_hashes_raw(data: &[u8]) -> Result<(usize, &[(u64, [u8; 32])]), ProgramError> {
     if data.len() < 8 {
         return Err(ProgramError::InvalidAccountData);
@@ -229,7 +180,7 @@ fn parse_slot_hashes_raw(data: &[u8]) -> Result<(usize, &[(u64, [u8; 32])]), Pro
     Ok((len, entries))
 }
 
-#[cfg(feature = "solana-nostd-mono")]
+#[cfg(feature = "std")]
 fn find_slot_in_entries(entries: &[(u64, [u8; 32])], target_slot: u64) -> Option<&[u8; 32]> {
     // Binary search since slots are in descending order
     entries.binary_search_by(|entry| entry.0.cmp(&target_slot).reverse())
@@ -240,17 +191,7 @@ fn find_slot_in_entries(entries: &[(u64, [u8; 32])], target_slot: u64) -> Option
 // Define instruction module that contains the main benchmarkable function
 pub mod instruction {
     // Bring crate-level items into scope based on feature flags
-    #[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
     use crate::{Pubkey, AccountInfo, ProgramResult, ProgramError};
-    #[cfg(all(feature = "std", not(any(feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
-    use crate::{Pubkey, AccountInfo, ProgramResult, ProgramError};
-    #[cfg(all(feature = "solana-program", not(any(feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
-    use crate::{Pubkey, AccountInfo, ProgramResult, ProgramError};
-    #[cfg(all(feature = "solana-program-mono", not(feature = "solana-nostd-mono")))]
-    use crate::{Pubkey, AccountInfo, ProgramResult, ProgramError};
-    #[cfg(feature = "solana-nostd-mono")]
-    use crate::{Pubkey, AccountInfo, ProgramResult, ProgramError};
-
     use crate::processor;
 
     /// Main instruction processor that dispatches to specific SlotHashes functions
@@ -276,17 +217,7 @@ pub mod instruction {
             10 => processor::process_get_hash(program_id, accounts, instruction_data),
             11 => processor::process_position(program_id, accounts, instruction_data),
             _ => {
-                #[cfg(all(feature = "no_std", not(feature = "solana-nostd-mono")))]
                 return Err(ProgramError::InvalidInstructionData);
-                #[cfg(all(feature = "std", not(feature = "solana-nostd-mono")))]
-                return Err(ProgramError::InvalidInstructionData);
-                #[cfg(all(feature = "solana-program", not(feature = "solana-program-mono"), not(feature = "solana-nostd-mono")))]
-                return Err(ProgramError::InvalidInstructionData);
-                #[cfg(all(feature = "solana-program-mono", not(feature = "solana-nostd-mono")))]
-                return Err(ProgramError::InvalidInstructionData);
-                #[cfg(feature = "solana-nostd-mono")]
-                return Err(ProgramError::InvalidInstructionData);
-            }
         }
     }
 }
@@ -294,9 +225,9 @@ pub mod instruction {
 // Define processor module that contains the benchmarkable functions
 pub mod processor {
     // Bring crate-level items into scope based on feature flags
-    #[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
+    #[cfg(all(feature = "no_std"))]
     use crate::{Pubkey, AccountInfo, ProgramResult, ProgramError, SlotHashes};
-    #[cfg(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))]
+    #[cfg(feature = "std")]
     use crate::{Pubkey, AccountInfo, ProgramResult, ProgramError, parse_slot_hashes_raw, find_slot_in_entries};
     
     /// Benchmark SlotHashes::from_account_info() construction
@@ -307,13 +238,13 @@ pub mod processor {
     ) -> ProgramResult {
         let slot_hashes_account = accounts.get(0).ok_or(ProgramError::NotEnoughAccountKeys)?;
 
-        #[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
+        #[cfg(all(feature = "no_std"))]
         {
             let slot_hashes = SlotHashes::from_account_info(slot_hashes_account)?;
             let len = slot_hashes.len();
             if len == 0 { return Err(ProgramError::InvalidArgument); }
         }
-        #[cfg(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))]
+        #[cfg(feature = "std")]
         {
             let data = slot_hashes_account.try_borrow_data().map_err(|_| ProgramError::InvalidAccountData)?;
             let (len, _entries) = parse_slot_hashes_raw(&data)?;
@@ -330,7 +261,7 @@ pub mod processor {
     ) -> ProgramResult {
         let slot_hashes_account = accounts.get(0).ok_or(ProgramError::NotEnoughAccountKeys)?;
 
-        #[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
+        #[cfg(all(feature = "no_std"))]
         {
             let target_slot = 10000u64;
             let slot_hashes = SlotHashes::from_account_info(slot_hashes_account)?;
@@ -338,7 +269,7 @@ pub mod processor {
                 if hash.iter().all(|&b| b == 0) { return Err(ProgramError::InvalidArgument); }
             }
         }
-        #[cfg(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))]
+        #[cfg(feature = "std")]
         {
             let target_slot = 10000u64;
             let data = slot_hashes_account.try_borrow_data().map_err(|_| ProgramError::InvalidAccountData)?;
@@ -357,19 +288,10 @@ pub mod processor {
         _instruction_data: &[u8],
     ) -> ProgramResult {
         let slot_hashes_account = accounts.get(0).ok_or_else(|| {
-            #[cfg(all(feature = "no_std", not(feature = "solana-nostd-mono")))]
-            return ProgramError::NotEnoughAccountKeys;
-            #[cfg(all(feature = "std", not(feature = "solana-nostd-mono")))]
-            return ProgramError::NotEnoughAccountKeys;
-            #[cfg(all(feature = "solana-program", not(feature = "solana-program-mono"), not(feature = "solana-nostd-mono")))]
-            return ProgramError::NotEnoughAccountKeys;
-            #[cfg(all(feature = "solana-program-mono", not(feature = "solana-nostd-mono")))]
-            return ProgramError::NotEnoughAccountKeys;
-            #[cfg(feature = "solana-nostd-mono")]
             return ProgramError::NotEnoughAccountKeys;
         })?;
 
-        #[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
+        #[cfg(all(feature = "no_std"))]
         {
             let slot_hashes = SlotHashes::from_account_info(slot_hashes_account)?;
             let target_slot = 9750u64; // Middle position - moderate search depth
@@ -377,7 +299,7 @@ pub mod processor {
                 if hash.iter().all(|&b| b == 0) { return Err(ProgramError::InvalidArgument); }
             }
         }
-        #[cfg(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))]
+        #[cfg(feature = "std")]
         {
             let data = slot_hashes_account.try_borrow_data().map_err(|_| ProgramError::InvalidAccountData)?;
             let (_len, entries) = parse_slot_hashes_raw(&data)?;
@@ -396,19 +318,10 @@ pub mod processor {
         _instruction_data: &[u8],
     ) -> ProgramResult {
         let slot_hashes_account = accounts.get(0).ok_or_else(|| {
-            #[cfg(all(feature = "no_std", not(feature = "solana-nostd-mono")))]
-            return ProgramError::NotEnoughAccountKeys;
-            #[cfg(all(feature = "std", not(feature = "solana-nostd-mono")))]
-            return ProgramError::NotEnoughAccountKeys;
-            #[cfg(all(feature = "solana-program", not(feature = "solana-program-mono"), not(feature = "solana-nostd-mono")))]
-            return ProgramError::NotEnoughAccountKeys;
-            #[cfg(all(feature = "solana-program-mono", not(feature = "solana-nostd-mono")))]
-            return ProgramError::NotEnoughAccountKeys;
-            #[cfg(feature = "solana-nostd-mono")]
             return ProgramError::NotEnoughAccountKeys;
         })?;
 
-        #[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
+        #[cfg(all(feature = "no_std"))]
         {
             let slot_hashes = SlotHashes::from_account_info(slot_hashes_account)?;
             let target_slot = 9100u64; // Late position - deep search
@@ -416,7 +329,7 @@ pub mod processor {
                 if hash.iter().all(|&b| b == 0) { return Err(ProgramError::InvalidArgument); }
             }
         }
-        #[cfg(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))]
+        #[cfg(feature = "std")]
         {
             let data = slot_hashes_account.try_borrow_data().map_err(|_| ProgramError::InvalidAccountData)?;
             let (_len, entries) = parse_slot_hashes_raw(&data)?;
@@ -436,7 +349,7 @@ pub mod processor {
     ) -> ProgramResult {
         let slot_hashes_account = accounts.get(0).ok_or(ProgramError::NotEnoughAccountKeys)?;
 
-        #[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
+        #[cfg(all(feature = "no_std"))]
         {
             let slot_hashes = SlotHashes::from_account_info(slot_hashes_account)?;
             let target_slot = 8000u64; // Missing slot - full tree traversal (slowest)
@@ -444,7 +357,7 @@ pub mod processor {
             // Force computation - verify it's None (missing)
             if hash_opt.is_some() { return Err(ProgramError::InvalidArgument); }
         }
-        #[cfg(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))]
+        #[cfg(feature = "std")]
         {
             let data = slot_hashes_account.try_borrow_data().map_err(|_| ProgramError::InvalidAccountData)?;
             let (_len, entries) = parse_slot_hashes_raw(&data)?;
@@ -463,14 +376,14 @@ pub mod processor {
     ) -> ProgramResult {
         let slot_hashes_account = accounts.get(0).ok_or(ProgramError::NotEnoughAccountKeys)?;
 
-        #[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
+        #[cfg(all(feature = "no_std"))]
         {
             let slot_hashes = SlotHashes::from_account_info(slot_hashes_account)?;
             // Iterate through first 10 entries and count them to prevent optimization
             let count = slot_hashes.into_iter().take(10).count();
             if count == 0 { return Err(ProgramError::InvalidArgument); }
         }
-        #[cfg(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))]
+        #[cfg(feature = "std")]
         {
             let data = slot_hashes_account.try_borrow_data().map_err(|_| ProgramError::InvalidAccountData)?;
             let (_len, entries) = parse_slot_hashes_raw(&data)?;
@@ -488,7 +401,7 @@ pub mod processor {
     ) -> ProgramResult {
         let slot_hashes_account = accounts.get(0).ok_or(ProgramError::NotEnoughAccountKeys)?;
 
-        #[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
+        #[cfg(all(feature = "no_std"))]
         {
             let slot_hashes = SlotHashes::from_account_info(slot_hashes_account)?;
             // Use unsafe unchecked access - first find position, then access unchecked
@@ -499,7 +412,7 @@ pub mod processor {
                 if entry.slot() != target_slot { return Err(ProgramError::InvalidArgument); }
             }
         }
-        #[cfg(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))]
+        #[cfg(feature = "std")]
         {
             // solana-program doesn't have unchecked variants, so use same safe method
             let data = slot_hashes_account.try_borrow_data().map_err(|_| ProgramError::InvalidAccountData)?;
@@ -520,7 +433,7 @@ pub mod processor {
     ) -> ProgramResult {
         let slot_hashes_account = accounts.get(0).ok_or(ProgramError::NotEnoughAccountKeys)?;
 
-        #[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
+        #[cfg(all(feature = "no_std"))]
         {
             let slot_hashes = SlotHashes::from_account_info(slot_hashes_account)?;
             // Use unsafe unchecked access - first find position, then access unchecked
@@ -531,7 +444,7 @@ pub mod processor {
                 if entry.slot() != target_slot { return Err(ProgramError::InvalidArgument); }
             }
         }
-        #[cfg(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))]
+        #[cfg(feature = "std")]
         {
             // solana-program doesn't have unchecked variants, so use same safe method
             let data = slot_hashes_account.try_borrow_data().map_err(|_| ProgramError::InvalidAccountData)?;
@@ -552,7 +465,7 @@ pub mod processor {
     ) -> ProgramResult {
         let slot_hashes_account = accounts.get(0).ok_or(ProgramError::NotEnoughAccountKeys)?;
 
-        #[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
+        #[cfg(all(feature = "no_std"))]
         {
             let slot_hashes = SlotHashes::from_account_info(slot_hashes_account)?;
             // Use unsafe unchecked access - first find position, then access unchecked
@@ -563,7 +476,7 @@ pub mod processor {
                 if entry.slot() != target_slot { return Err(ProgramError::InvalidArgument); }
             }
         }
-        #[cfg(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))]
+        #[cfg(feature = "std")]
         {
             // solana-program doesn't have unchecked variants, so use same safe method
             let data = slot_hashes_account.try_borrow_data().map_err(|_| ProgramError::InvalidAccountData)?;
@@ -584,7 +497,7 @@ pub mod processor {
     ) -> ProgramResult {
         let slot_hashes_account = accounts.get(0).ok_or(ProgramError::NotEnoughAccountKeys)?;
 
-        #[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
+        #[cfg(all(feature = "no_std"))]
         {
             let slot_hashes = SlotHashes::from_account_info(slot_hashes_account)?;
             // Get the first entry's slot and search for its hash (forces binary search)
@@ -595,7 +508,7 @@ pub mod processor {
                 return Err(ProgramError::InvalidArgument);
             }
         }
-        #[cfg(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))]
+        #[cfg(feature = "std")]
         {
             let data = slot_hashes_account.try_borrow_data().map_err(|_| ProgramError::InvalidAccountData)?;
             let (_len, entries) = parse_slot_hashes_raw(&data)?;
@@ -618,7 +531,7 @@ pub mod processor {
     ) -> ProgramResult {
         let slot_hashes_account = accounts.get(0).ok_or(ProgramError::NotEnoughAccountKeys)?;
 
-        #[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
+        #[cfg(all(feature = "no_std"))]
         {
             let slot_hashes = SlotHashes::from_account_info(slot_hashes_account)?;
             // Get the first entry's slot and search for its position (forces binary search)
@@ -629,7 +542,7 @@ pub mod processor {
                 return Err(ProgramError::InvalidArgument);
             }
         }
-        #[cfg(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))]
+        #[cfg(feature = "std")]
         {
             let data = slot_hashes_account.try_borrow_data().map_err(|_| ProgramError::InvalidAccountData)?;
             let (_len, entries) = parse_slot_hashes_raw(&data)?;
@@ -654,7 +567,7 @@ pub mod processor {
     ) -> ProgramResult {
         let slot_hashes_account = accounts.get(0).ok_or(ProgramError::NotEnoughAccountKeys)?;
 
-        #[cfg(all(feature = "no_std", not(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))))]
+        #[cfg(all(feature = "no_std"))]
         {
             let slot_hashes = SlotHashes::from_account_info(slot_hashes_account)?;
             let entries = slot_hashes.entries();
@@ -673,7 +586,7 @@ pub mod processor {
                 }
             }
         }
-        #[cfg(any(feature = "std", feature = "solana-program", feature = "solana-program-mono", feature = "solana-nostd-mono"))]
+        #[cfg(feature = "std")]
         {
             let data = slot_hashes_account.try_borrow_data().map_err(|_| ProgramError::InvalidAccountData)?;
             let (len, entries) = parse_slot_hashes_raw(&data)?;

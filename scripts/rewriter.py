@@ -31,57 +31,32 @@ def _ensure_pinocchio_handlers(crate_root: pathlib.Path):
             content = "#![no_std]\n" + content
             needs_write = True
 
-        # 2. Ensure use statement for macros
-        # Check if no_allocator OR nostd_panic_handler already appear in ANY use pinocchio:: line
-        import_has_macros = False
-        for line in content.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("use pinocchio::") and "no_allocator" in stripped and "nostd_panic_handler" in stripped:
-                import_has_macros = True
-                break
-
-        if not import_has_macros:
-            # Find a good place to insert the use statement
-            lines = content.splitlines()
-            insert_index = 0
-            for i, line in enumerate(lines):
-                if line.strip().startswith('#!['):
-                    insert_index = i + 1
-                elif line.strip().startswith('use ') or line.strip().startswith('pub mod'):
-                    insert_index = i
-                    break
-                elif line.strip() and not line.strip().startswith('//'):
-                    insert_index = i
-                    break
-            
-            lines.insert(insert_index, "use pinocchio::{no_allocator, nostd_panic_handler};")
-            content = '\n'.join(lines)
-            needs_write = True
-
-        # 3. Ensure macro invocations exist
+        # 2. Ensure macro invocations exist (using fully-qualified path so no `use` needed)
         lines = content.splitlines()
         has_no_allocator = any("no_allocator!();" in line for line in lines)
         has_panic_handler = any("nostd_panic_handler!();" in line for line in lines)
         
-        if not has_no_allocator or not has_panic_handler:
-            # Find where to insert macro calls (after use statements)
+        macros_to_insert: List[str] = []
+        if not has_no_allocator:
+            macros_to_insert.append("#[cfg(not(feature = \"std\"))] pinocchio::no_allocator!();")
+        if not has_panic_handler:
+            macros_to_insert.append("#[cfg(not(feature = \"std\"))] pinocchio::nostd_panic_handler!();")
+
+        if macros_to_insert:
+            # Determine insertion index: first non-attribute line (items start) but **after** last inner attribute
             insert_index = 0
-            for i, line in enumerate(lines):
-                if line.strip().startswith('use '):
-                    insert_index = i + 1
-                elif line.strip() and not line.strip().startswith('#![') and not line.strip().startswith('//'):
+            for idx, ln in enumerate(lines):
+                if ln.lstrip().startswith('#!['):
+                    insert_index = idx + 1
+                else:
                     break
-            
-            if not has_no_allocator:
-                lines.insert(insert_index, "no_allocator!();")
-                insert_index += 1
-            if not has_panic_handler:
-                lines.insert(insert_index, "nostd_panic_handler!();")
-            
-            content = '\n'.join(lines)
+            # Insert macros in original order
+            for m in reversed(macros_to_insert):
+                lines.insert(insert_index, m)
+            content = "\n".join(lines)
             needs_write = True
 
-        if needs_write:
+        if needs_write or macros_to_insert:
             lib_rs.write_text(content, encoding="utf-8")
             print_success("Updated src/lib.rs for pinocchio handlers and no_std")
     except Exception as exc:
@@ -290,6 +265,8 @@ def _generate_target_imports(found_identifiers: set, entrypoint_name: str) -> st
         if identifier in rewrite_mapping:
             target_path = rewrite_mapping[identifier]
             target_imports[identifier] = target_path
+        elif identifier == "black_box":
+            target_imports[identifier] = "core::hint::black_box"
         else:
             # Only warn about identifiers that look like Solana types
             if any(solana_hint in identifier.lower() for solana_hint in 
@@ -364,7 +341,7 @@ def _replace_qualified_usage_patterns(content: str, entrypoint_name: str) -> str
     """Replace qualified usage patterns like instruction::create_account and program::ID in the code."""
     import re
     
-    if entrypoint_name == "pinocchio":
+    if entrypoint_name in ("pinocchio", "pinocchio-std"):
         # For pinocchio, replace qualified usage patterns
         content = re.sub(r'\binstruction::create_account\b', 'pinocchio::sysvars::system_instruction::create_account', content)
         content = re.sub(r'\bprogram::ID\b', 'pinocchio::sysvars::SYSTEM_PROGRAM_ID', content)
@@ -417,93 +394,134 @@ def _replace_qualified_usage_patterns(content: str, entrypoint_name: str) -> str
 
 
 def _strip_imports_and_generate_clean_imports(content: str, entrypoint_name: str) -> str:
-    """Simple approach: strip all imports, analyze what identifiers are needed, generate clean imports.
+    """Remove all `use …;` statements (except `use crate::processor;`) **without**
+    touching surrounding braces/new-lines, then regenerate a cleaned import block
+    that targets the requested entrypoint.
     
-    1. Find and remove all 'use ...*;' statements (single or multi-line)
-    2. Analyze remaining content for needed identifiers  
-    3. Generate clean import block for target entrypoint
-    4. Insert at top after any #![] attributes
+    The previous implementation used a single DOTALL regex that occasionally
+    deleted the `}` following a multi-line grouped import, breaking brace
+    balance.  We now work line-by-line so only the import lines themselves (and
+    any #[cfg] attributes directly above them) are removed.
     """
+
     import re
-    
-    # Step 1: Strip all imports using a more robust regex that handles multi-line statements
-    # This handles both single-line and multi-line use statements
-    import_pattern = r'use\s[^;]*;'
-    use_statements = re.findall(import_pattern, content, re.MULTILINE | re.DOTALL)
-    content_without_imports = re.sub(import_pattern, '', content, flags=re.MULTILINE | re.DOTALL)
-    
-    # If there were no original imports, don't add any new ones (except for special cases)
-    had_original_imports = len(use_statements) > 0
-    
-    # Step 2: Analyze what identifiers are actually used in the remaining code
-    found_identifiers = _extract_all_imported_identifiers('\n'.join(use_statements))
-    
+
+    lines = content.splitlines()
+    kept_lines: list[str] = []
+    removed_use_lines: list[str] = []
+
+    i = 0
+    while i < len(lines):
+        attr_buffer: list[str] = []
+
+        # Collect preceding attributes (#[cfg …]) so we can drop them together
+        while i < len(lines) and lines[i].lstrip().startswith('#['):
+            attr_buffer.append(lines[i])
+            i += 1
+
+        if i >= len(lines):
+            kept_lines.extend(attr_buffer)
+            break
+
+        line = lines[i]
+        stripped = line.lstrip()
+
+        if stripped.startswith('use '):
+            # Keep the special crate::processor import, drop everything else
+            if stripped.startswith('use crate::processor'):
+                kept_lines.extend(attr_buffer)
+                kept_lines.append(line)
+                i += 1
+            else:
+                # Drop attr_buffer + the entire use-block up to and including the semicolon
+                current_use_lines: list[str] = attr_buffer + [line]
+                while ';' not in lines[i]:
+                    i += 1
+                    current_use_lines.append(lines[i])
+                removed_use_lines.extend(current_use_lines)
+                i += 1  # move past the semicolon line
+        else:
+            # Not an import – keep what we buffered and this line
+            kept_lines.extend(attr_buffer)
+            kept_lines.append(line)
+            i += 1
+
+    content_without_imports = '\n'.join(kept_lines)
+
+    # --------------------------------------------------------------------------------
+    # Identifier extraction / new-import generation (mostly unchanged)
+    # --------------------------------------------------------------------------------
+
+    had_original_imports = len(removed_use_lines) > 0
+
+    found_identifiers = _extract_all_imported_identifiers('\n'.join(removed_use_lines))
+
     # Add identifiers that might be used without explicit imports
     if "msg!" in content_without_imports:
         found_identifiers.add("msg")
     if "sol_log" in content_without_imports:
         found_identifiers.add("sol_log")
-    
-    # Scan for common Solana types used in the code
-    for keyword in ["Pubkey", "AccountInfo", "ProgramResult", "ProgramError", "Instruction", "AccountMeta", "next_account_info", "invoke", "invoke_signed"]:
-        if re.search(r'\b' + keyword + r'\b', content_without_imports):
+
+    for keyword in [
+        "Pubkey",
+        "AccountInfo",
+        "ProgramResult",
+        "ProgramError",
+        "Instruction",
+        "AccountMeta",
+        "next_account_info",
+        "invoke",
+        "invoke_signed",
+    ]:
+        if re.search(rf"\b{keyword}\b", content_without_imports):
             found_identifiers.add(keyword)
-    
-    # For pinocchio target, check for qualified usage patterns that need to be rewritten
-    if entrypoint_name == "pinocchio":
-        # Replace pinocchio:: qualified usage first
-        content_without_imports = re.sub(r'\bpinocchio::msg!', 'msg!', content_without_imports)
-        content_without_imports = re.sub(r'\bpinocchio::log::sol_log', 'sol_log', content_without_imports)
-        content_without_imports = re.sub(r'\bpinocchio::pubkey::Pubkey', 'Pubkey', content_without_imports)
-        content_without_imports = re.sub(r'\bpinocchio::account_info::AccountInfo', 'AccountInfo', content_without_imports)
-        content_without_imports = re.sub(r'\bpinocchio::program_error::ProgramError', 'ProgramError', content_without_imports)
-        content_without_imports = re.sub(r'\bpinocchio::ProgramResult', 'ProgramResult', content_without_imports)
-        
-        # Add identifiers for pinocchio macros
-        if "msg!" in content_without_imports:
-            found_identifiers.add("msg")
-        
-        # Ensure we have required pinocchio imports
+
+    if entrypoint_name in ("pinocchio", "pinocchio-std"):
+        content_without_imports = re.sub(r"\bpinocchio::msg!", "msg!", content_without_imports)
+        content_without_imports = re.sub(r"\bpinocchio::log::sol_log", "sol_log", content_without_imports)
+        content_without_imports = re.sub(r"\bpinocchio::pubkey::Pubkey", "Pubkey", content_without_imports)
+        content_without_imports = re.sub(r"\bpinocchio::account_info::AccountInfo", "AccountInfo", content_without_imports)
+        content_without_imports = re.sub(r"\bpinocchio::program_error::ProgramError", "ProgramError", content_without_imports)
+        content_without_imports = re.sub(r"\bpinocchio::ProgramResult", "ProgramResult", content_without_imports)
+
         found_identifiers.update(["Pubkey", "AccountInfo", "ProgramResult", "ProgramError"])
-        
-        # Remove allocator / panic macro ids to prevent duplicate re-imports
         found_identifiers.discard("no_allocator")
         found_identifiers.discard("nostd_panic_handler")
-    
-    # Step 3: Generate clean imports for target entrypoint (only if there were original imports)
+
     new_imports = ""
     if had_original_imports and found_identifiers:
         new_imports = _generate_target_imports(found_identifiers, entrypoint_name)
-    
-    # Step 4: Insert imports after #![] attributes or at very top
-    lines = content_without_imports.splitlines()
-    insert_index = 0
-    for i, line in enumerate(lines):
-        if line.strip().startswith('#!['):
-            insert_index = i + 1
-        elif line.strip() and not line.strip().startswith("//"):
+
+    # insert import block after initial #![…] attrs
+    final_lines = content_without_imports.splitlines()
+    insert_idx = 0
+    for idx, ln in enumerate(final_lines):
+        if ln.strip().startswith('#!['):
+            insert_idx = idx + 1
+        elif ln.strip() and not ln.strip().startswith('//'):
             break
-    
-    # For pinocchio, ensure no_std setup and macro imports
-    if entrypoint_name == "pinocchio":
-        if "#![no_std]" not in content_without_imports:
-            lines.insert(0, "#![no_std]")
-            insert_index += 1
-        
-        # Only add pinocchio macro imports if we actually need them
-        # Don't add them automatically to every file - let the specific file handling decide
-        if new_imports and "pinocchio::" in new_imports:
-            macro_imports = "use pinocchio::{no_allocator, nostd_panic_handler};"
-            if macro_imports not in new_imports:
-                new_imports = macro_imports + "\n" + new_imports
-    
-    # Insert the new import block
+
     if new_imports:
-        lines.insert(insert_index, "")  # blank line before imports
-        lines.insert(insert_index + 1, new_imports)
-        lines.insert(insert_index + 2, "")  # blank line after imports
-    
-    return '\n'.join(lines)
+        final_lines.insert(insert_idx, "")
+        final_lines.insert(insert_idx + 1, new_imports)
+        final_lines.insert(insert_idx + 2, "")
+
+    if 'pub mod instruction' in content_without_imports:
+        patched = re.sub(
+            r'(pub\s+mod\s+instruction\s*{\s*)(?![^}]*use\s+crate::processor;)',
+            r'\1use crate::processor;\n',
+            '\n'.join(final_lines),
+            count=1,
+            flags=re.DOTALL,
+        )
+        return patched
+
+    # Remove any use line that imports these macros – they are not needed and
+    # break compilation because the macros are not re-exported as items.
+    modified_content = re.sub(r"^\s*use\s+[^;]*\bno_allocator\b[^;]*;\s*\n?", "", content_without_imports, flags=re.MULTILINE)
+    modified_content = re.sub(r"^\s*use\s+[^;]*\bnostd_panic_handler\b[^;]*;\s*\n?", "", content_without_imports, flags=re.MULTILINE)
+
+    return '\n'.join(final_lines)
 
 
 def _replace_imports_with_target_imports(content: str, entrypoint_name: str) -> str:
@@ -565,7 +583,15 @@ def _strip_duplicate_bench_modules(src: str) -> str:
     for m in matches:
         name = m.group(1)
         if name in seen:
-            # find matching closing brace for this module to know span
+            # Check if the duplicate has a cfg attribute directly above it; if so, keep both copies.
+            # We look back a few lines to see if there's a cfg attribute.
+            line_start = src.rfind('\n', 0, m.start()) + 1
+            prev_segment = src[max(0, line_start - 120): line_start]  # up to ~4 lines back
+            if re.search(r"#\s*\[\s*cfg", prev_segment):
+                # Distinct feature-gated copy; keep it.
+                continue
+
+            # Otherwise treat as redundant and remove
             brace_lvl = 1
             idx = m.end()
             while idx < len(src):
@@ -628,6 +654,50 @@ def _ensure_use_super_in_modules(content: str) -> str:
                 out.append(f"{indent}use super::*;")
         i += 1
     return "\n".join(out)
+
+
+# ---------------------------------------------------------------------------
+# Bracing helpers
+# ---------------------------------------------------------------------------
+
+def _close_unclosed_top_modules(content: str) -> str:
+    """Ensure each top-level `pub mod XYZ {{` declaration has a matching closing brace.
+
+    We only track braces that appear at column 0 (i.e. no leading whitespace)
+    so that braces within function bodies, impl blocks, etc. do **not** affect
+    our module-level balance accounting.
+    """
+
+    out_lines: list[str] = []
+    depth = 0  # number of currently open top-level modules
+
+    mod_start_re = re.compile(r"^pub\s+mod\s+\w+\s*{\s*$")
+    closing_brace_re = re.compile(r"^\s*}\s*$")
+
+    for line in content.splitlines():
+        stripped = line.lstrip()
+
+        # If a new module starts while one is already open, close the previous
+        # one first.
+        if mod_start_re.match(stripped) and depth == 1:
+            out_lines.append("}")
+            depth -= 1
+
+        out_lines.append(line)
+
+        # Update depth counters *after* writing the current line so that the
+        # opening brace we just saw isn't immediately cancelled out.
+        if mod_start_re.match(stripped):
+            depth += 1
+        elif closing_brace_re.match(stripped) and depth > 0:
+            depth -= 1
+
+    # Close any unbalanced modules at EOF.
+    while depth > 0:
+        out_lines.append("}")
+        depth -= 1
+
+    return "\n".join(out_lines) + "\n"
 
 
 # ---------------------------------------------------------------------------
@@ -696,9 +766,6 @@ def rewrite_sources_for_entrypoint(entrypoint_name: str, crate_root: pathlib.Pat
                 
                 modified_content = '\n'.join(lines)
 
-                # Strip any cfg attributes that may still gate the kept module
-                modified_content = re.sub(r'#\[\s*cfg[^\]]*\]\s*\n?', '', modified_content, flags=re.MULTILINE)
-
                 # After the manual fixes, drop any remaining no_std-gated module blocks – they are
                 # unused when compiling for std entrypoints and can cause duplicate definitions.
                 modified_content = re.sub(
@@ -714,156 +781,64 @@ def rewrite_sources_for_entrypoint(entrypoint_name: str, crate_root: pathlib.Pat
                 # Replace all Solana imports with clean, target-specific imports
                 modified_content = _strip_imports_and_generate_clean_imports(modified_content, entrypoint_name)
             
-            # Post-processing: strip feature-gated modules that don't apply to our target
-            is_std_target = entrypoint_name in ("solana-program", "solana-program-mono")
-            lines = modified_content.splitlines()
-            kept_lines = []
-            
-            i = 0
-            while i < len(lines):
-                line = lines[i]
-                stripped = line.strip()
-
-                if stripped.startswith("#[cfg"):
-                    is_no_std_cfg = 'feature = "no_std"' in stripped
-                    is_std_cfg = 'feature = "std"' in stripped
-                    
-                    # Skip cfg blocks that don't match our target
-                    should_skip = False
-                    if is_std_target:
-                        # For std targets, skip no_std cfg blocks
-                        should_skip = is_no_std_cfg
-                    else:
-                        # For no_std targets, skip std cfg blocks  
-                        should_skip = is_std_cfg
-                    
-                    if should_skip:
-                        # Look ahead to see what this cfg applies to
-                        j = i + 1
-                        while j < len(lines) and lines[j].strip() == "":
-                            j += 1
-                        
-                        if j < len(lines):
-                            next_line = lines[j].strip()
-                            
-                            # Check if this is a function
-                            if next_line.startswith("pub fn ") or next_line.startswith("fn "):
-                                # Skip the entire function
-                                brace_level = 0
-                                k = j
-                                found_start_brace = False
-                                while k < len(lines):
-                                    if '{' in lines[k]:
-                                        brace_level += lines[k].count('{')
-                                        found_start_brace = True
-                                    if '}' in lines[k]:
-                                        brace_level -= lines[k].count('}')
-                                    if found_start_brace and brace_level == 0:
-                                        i = k + 1
-                                        break
-                                    k += 1
-                                else:
-                                    i = j + 1
-                                continue
-                            # Check if this is a module
-                            elif next_line.startswith("pub mod ") and '{' in next_line:
-                                # Skip the entire module
-                                brace_level = 1  # Opening brace is on the same line
-                                k = j + 1
-                                while k < len(lines) and brace_level > 0:
-                                    if '{' in lines[k]:
-                                        brace_level += lines[k].count('{')
-                                    if '}' in lines[k]:
-                                        brace_level -= lines[k].count('}')
-                                    k += 1
-                                i = k
-                                continue
-                            # Handle brace-style cfg blocks directly following attribute
-                            elif next_line.startswith('{'):
-                                # Skip the entire brace-delimited block
-                                brace_level = 1  # we are on the opening '{' line
-                                k = j + 1
-                                while k < len(lines) and brace_level > 0:
-                                    brace_level += lines[k].count('{')
-                                    brace_level -= lines[k].count('}')
-                                    k += 1
-                                i = k  # continue after the closing brace
-                                continue
-                            else:
-                                # Otherwise (single statement), skip cfg line and the next item
-                                i = j + 1
-                                continue
-                        else:
-                            i += 1
-                            continue
-                
-                kept_lines.append(line)
-                i += 1
-                        
-            modified_content = "\n".join(kept_lines)
-            
-            # Remove any remaining cfg attributes
-            modified_content = re.sub(r'#\[\s*cfg[^\]]*\]\s*\n?', '', modified_content, flags=re.MULTILINE)
+            # We keep all feature-gated blocks intact and rely on Cargo feature selection.
+            # (Previously we tried to strip non-active blocks which caused brace mismatches
+            #  and duplicate-definition errors when the cfg conditions changed. The crates
+            #  now provide proper `no_std` / `std` gating, so we no longer remove or edit
+            #  these sections here.)
 
             # Post-processing fixes
             modified_content = _strip_duplicate_bench_modules(modified_content)
             modified_content = _ensure_use_super_in_modules(modified_content)
+            # Final brace-balance pass removed – brace integrity is preserved by
+            # improved import stripping logic.
 
             # Add benchmark module alias
             benches_alias_map = {
                 "pinocchio": "pinocchio_benches",
+                "pinocchio-std": "pinocchio_std_benches",
                 "solana-program": "solana_benches",
                 "solana-program-mono": "solana_program_mono_benches",
                 "solana-nostd-entrypoint": "nostd_entrypoint_benches",
             }
             benches_alias = benches_alias_map.get(entrypoint_name, "solana_benches")
             if benches_alias not in modified_content:
-                m = re.search(r"pub mod (\w+_benches)\s*\{", modified_content)
-                if m:
-                    orig_benches = m.group(1)
-                    # Find the matching closing brace for that module to stay outside it
-                    brace_level = 1
-                    idx = m.end()
-                    while idx < len(modified_content) and brace_level > 0:
-                        if modified_content[idx] == '{':
-                            brace_level += 1
-                        elif modified_content[idx] == '}':
-                            brace_level -= 1
-                        idx += 1
-                    # idx now points just after the closing '}'
+                # Prefer the module that actually compiles for the current target:  
+                #   • pinocchio / nostd-entrypoint → `nostd_benches`  
+                #   • std entrypoints             → `std_benches` (or first seen)
+
+                preferred_module_name = None
+                if entrypoint_name in ("pinocchio", "solana-nostd-entrypoint"):
+                    # Look explicitly for nostd_benches first
+                    m_pref = re.search(r"pub mod (nostd_benches)\s*\{", modified_content)
+                    if m_pref:
+                        preferred_module_name = m_pref.group(1)
+
+                # Fallback: first benches module in file
+                if preferred_module_name is None:
+                    m_generic = re.search(r"pub mod (\w+_benches)\s*\{", modified_content)
+                    if m_generic:
+                        preferred_module_name = m_generic.group(1)
+
+                if preferred_module_name:
+                    orig_benches = preferred_module_name
                     alias_line = f"\npub use {orig_benches} as {benches_alias};\n"
-                    modified_content = modified_content[:idx] + alias_line + modified_content[idx:]
+                    if alias_line.strip() not in modified_content:
+                        modified_content = modified_content.rstrip() + alias_line
 
             # Entrypoint-specific fixes
             if entrypoint_name == "pinocchio":
-                # Add pinocchio allocator macros after imports - but only to lib.rs, not all files
-                if rust_file.name == "lib.rs":
-                    lines = modified_content.splitlines()
-                    insert_index = 0
-                    for i, line in enumerate(lines):
-                        if line.strip().startswith('use ') or line.strip().startswith('#!['):
-                            insert_index = i + 1
-                        elif line.strip() and not line.strip().startswith('//'):
-                            break
-                    
-                    if "no_allocator!();" not in modified_content:
-                        lines.insert(insert_index, "no_allocator!();")
-                        insert_index += 1
-                    if "nostd_panic_handler!();" not in modified_content:
-                        lines.insert(insert_index, "nostd_panic_handler!();")
-                    modified_content = '\n'.join(lines)
-                else:
-                    # For non-lib.rs files, remove any macro calls and imports that might have been added
-                    lines = modified_content.splitlines()
-                    filtered_lines = []
-                    for line in lines:
-                        stripped = line.strip()
-                        if (stripped == "no_allocator!();" or 
-                            stripped == "nostd_panic_handler!();" or
-                            stripped == "use pinocchio::{no_allocator, nostd_panic_handler};"):
-                            continue
-                        filtered_lines.append(line)
-                    modified_content = '\n'.join(filtered_lines)
+                # For non-lib.rs files, remove any macro calls and imports that might have been added
+                lines = modified_content.splitlines()
+                filtered_lines = []
+                for line in lines:
+                    stripped = line.strip()
+                    if (stripped == "no_allocator!();" or 
+                        stripped == "nostd_panic_handler!();" or
+                        stripped == "use pinocchio::{no_allocator, nostd_panic_handler};"):
+                        continue
+                    filtered_lines.append(line)
+                modified_content = '\n'.join(filtered_lines)
                 
                 # Fix pinocchio-specific issues
                 modified_content = modified_content.replace("PINOCCHIO_SYSTEM_PROGRAM_ID", "Pubkey::default()")
@@ -922,7 +897,7 @@ def rewrite_sources_for_entrypoint(entrypoint_name: str, crate_root: pathlib.Pat
                     "unsafe { solana_nostd_entrypoint::cpi::create_account_unchecked(funder_account_info, new_account_info, lamports, space, program_id)?; }",
                 )
 
-            elif entrypoint_name in ("solana-program", "solana-program-mono"):
+            elif entrypoint_name in ("solana-program", "solana-program-mono", "pinocchio-std"):
                 # Fix AccountMeta for solana entrypoints
                 modified_content = re.sub(r"AccountMeta::writable_signer\(\s*([A-Za-z_][A-Za-z0-9_]*)\.key\(\)\s*\)", r"AccountMeta::new((*\1.key()).into(), true)", modified_content)
 
@@ -932,6 +907,35 @@ def rewrite_sources_for_entrypoint(entrypoint_name: str, crate_root: pathlib.Pat
                 # Also remove any lingering use statements importing those macros
                 modified_content = re.sub(r"^\s*use\s+[^;]*\bno_allocator\b[^;]*;\s*\n?", "", modified_content, flags=re.MULTILINE)
                 modified_content = re.sub(r"^\s*use\s+[^;]*\bnostd_panic_handler\b[^;]*;\s*\n?", "", modified_content, flags=re.MULTILINE)
+
+                # pinocchio-std needs `alloc` crate and vec! macro when we are compiling with
+                # `#![no_std]` on-chain. Inject the crate import once per file and rewrite
+                # `std::vec!` / `vec::vec!` to `alloc::vec!`.
+                if entrypoint_name == "pinocchio-std":
+                    if "extern crate alloc" not in modified_content:
+                        # insert after the last #![...] inner attribute
+                        lines = modified_content.splitlines()
+                        insert_at = 0
+                        for idx, ln in enumerate(lines):
+                            if ln.strip().startswith("#!["):
+                                insert_at = idx + 1
+                        lines.insert(insert_at, "extern crate alloc;")
+                        modified_content = "\n".join(lines)
+
+                    # Replace vec macro paths
+                    modified_content = modified_content.replace("std::vec!", "alloc::vec!")
+                    modified_content = modified_content.replace("vec::vec!", "alloc::vec!")
+
+                    # Ensure black_box import exists if the symbol is used
+                    if "black_box(" in modified_content and "use core::hint::black_box;" not in modified_content:
+                        # insert after other use lines / attributes
+                        lines = modified_content.splitlines()
+                        insert_at = 0
+                        for idx, ln in enumerate(lines):
+                            if ln.strip().startswith("use ") or ln.strip().startswith("#!["):
+                                insert_at = idx + 1
+                        lines.insert(insert_at, "use core::hint::black_box;")
+                        modified_content = "\n".join(lines)
 
             # Replace qualified usage patterns
             modified_content = _replace_qualified_usage_patterns(modified_content, entrypoint_name)

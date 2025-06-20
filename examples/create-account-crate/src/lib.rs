@@ -4,14 +4,10 @@ use solana_program::{
     account_info::AccountInfo,
     instruction::{AccountMeta, Instruction},
     account_info::Account as CpiAccount,
-    program::invoke_signed, // pinocchio should use invoke_signed_unchecked, which is not in a program subcrate
+    program::invoke_signed,
     program_error::ProgramError,
 };
 
-// Define a simple instruction structure for this crate
-// byte 0: instruction_tag (0 for CreateAccount)
-// byte 1-8: lamports (u64)
-// byte 9-16: space (u64)
 const CREATE_ACCOUNT_INSTRUCTION_TAG: u8 = 0;
 const LAMPORTS_OFFSET: usize = 1;
 const SPACE_OFFSET: usize = 9;

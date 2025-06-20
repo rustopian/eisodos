@@ -11,3 +11,9 @@ crate-type = ["cdylib", "lib"] # Keep existing types
 
 [dependencies]
 pinocchio = { version = "0.8", git = "https://github.com/rustopian/pinocchio.git", branch = "rustopian/slot-hashes-sysvar" }
+
+[features]
+ default = []
+ std = []
+ no_std = []
+ host = ["std", "pinocchio/std"]

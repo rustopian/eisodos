@@ -99,10 +99,13 @@ def _copy_and_prepare_benched_crate(crate_dir: pathlib.Path, entrypoint_name: st
         
         if entrypoint_name in ["pinocchio", "solana-nostd-entrypoint"] and "no_std" not in feats:
             feats["no_std"] = []
-            manifest_path.write_text(toml.dumps(manifest_data), "utf-8")
+        elif entrypoint_name == "pinocchio-std" and "std" not in feats:
+            feats["std"] = []
         elif entrypoint_name in ["solana-program", "solana-program-mono"] and "std" not in feats:
             feats["std"] = []
-            manifest_path.write_text(toml.dumps(manifest_data), "utf-8")
+        elif entrypoint_name == "solana-nostd-entrypoint" and "no_std" not in feats:
+            feats["no_std"] = []
+        manifest_path.write_text(toml.dumps(manifest_data), "utf-8")
     except Exception:
         pass
 
@@ -134,6 +137,7 @@ def _build_runner_workspace(
         "solana-program": "template.solana_program.cargo.toml",
         "solana-program-mono": "template.solana_program_mono.cargo.toml",
         "solana-nostd-entrypoint": "template.solana_nostd_entrypoint.cargo.toml",
+        "pinocchio-std": "template.pinocchio.cargo.toml",
     }[entrypoint_name]
     main_tmpl = cargo_tmpl.replace("cargo.toml", "lib.rs")
 
@@ -207,6 +211,16 @@ def run() -> None:
 
     ws_dep_block = get_workspace_dependencies_block(["pinocchio"])
 
+    if "pinocchio-std" in requested_entrypoints:
+        # strip any existing pinocchio line
+        ws_dep_block = "\n".join([
+            ln for ln in ws_dep_block.splitlines() if not ln.strip().startswith("pinocchio =")
+        ]) or "[workspace.dependencies]"
+        pin_path = pathlib.Path(__file__).parent.parent / "sdk" / "pinocchio"
+        ws_dep_block += """
+pinocchio = { version = "0.8", git = "https://github.com/rustopian/pinocchio.git", branch = "rustopian/slot-hashes-sysvar", default-features = false, features = [\"std\"] }"""
+    # If only pinocchio requested (no std), the original block already correct.
+
     for crate_dir in crates_to_process:
         print_section(f"\n=== Processing crate: {crate_dir} ===")
         crate_name = get_package_name_from_manifest(crate_dir) or crate_dir.name
@@ -228,12 +242,18 @@ def run() -> None:
                 continue
             crate_mod, bench_mod, bench_fn = parse_function_path(func_path)
 
-            for ep in entrypoints:
-                if ep not in requested_entrypoints:
+            for ep_cfg in entrypoints:
+                # Determine if this benchmark should run under current request set.
+                if ep_cfg in requested_entrypoints:
+                    ep_runtime = ep_cfg
+                elif ep_cfg == "pinocchio" and "pinocchio-std" in requested_entrypoints:
+                    ep_runtime = "pinocchio-std"  # alias: run pinocchio benches in std mode
+                else:
                     continue
 
-                print_subsection(f"--> Benchmark {bench_id} | entrypoint {ep}")
-                ep_feats = next((fc.get("features", []) for fc in feats_cfg if fc.get("entrypoint") == ep), [])
+                print_subsection(f"--> Benchmark {bench_id} | entrypoint {ep_runtime}")
+
+                ep_feats = next((fc.get("features", []) for fc in feats_cfg if fc.get("entrypoint") == ep_cfg), [])
 
                 # Drop features not declared in the benched crate's manifest to avoid build failures
                 try:
@@ -246,23 +266,32 @@ def run() -> None:
                 valid_ep_feats = [f for f in ep_feats if f in manifest_feats]
                 if ep_feats and not valid_ep_feats:
                     print_warning(
-                        f"Requested features {ep_feats} for {ep} not present in crate; omitting."
+                        f"Requested features {ep_feats} for {ep_runtime} not present in crate; omitting."
                     )
                 ep_feats = valid_ep_feats
 
-                # Automatically add appropriate features based on entrypoint
-                if ep == "pinocchio" and "no_std" not in ep_feats:
-                    ep_feats.append("no_std")
-                elif ep in ["solana-program", "solana-program-mono"] and "std" not in ep_feats:
+                # Clean feature list & auto-add
+                if ep_runtime == "pinocchio":
+                    if "std" in ep_feats:
+                        ep_feats.remove("std")
+                    if "no_std" not in ep_feats:
+                        ep_feats.append("no_std")
+                elif ep_runtime == "pinocchio-std":
+                    ep_feats = [f for f in ep_feats if f != "no_std"]
+                    if "std" not in ep_feats:
+                        ep_feats.append("std")
+                elif ep_runtime in ["solana-program", "solana-program-mono"] and "std" not in ep_feats:
                     ep_feats.append("std")
-                elif ep == "solana-nostd-entrypoint" and "no_std" not in ep_feats:
-                    ep_feats.append("no_std")
+                elif ep_runtime == "solana-nostd-entrypoint":
+                    ep_feats = [f for f in ep_feats if f != "std"]
+                    if "no_std" not in ep_feats:
+                        ep_feats.append("no_std")
 
                 # 1. Prepare temp workspace
                 temp_project_dir, benched_copy_path = _build_runner_workspace(
                     bench_id,
                     crate_name,
-                    ep,
+                    ep_runtime,
                     ep_feats,
                     ws_dep_block,
                     bench_mod,
@@ -271,7 +300,7 @@ def run() -> None:
                 )
 
                 # 2. Copy & rewrite benched crate
-                _copy_and_prepare_benched_crate(crate_dir, ep, benched_copy_path)
+                _copy_and_prepare_benched_crate(crate_dir, ep_runtime, benched_copy_path)
 
                 # 3. Build
                 artifact, program_id, build_secs, prog_size = run_cargo_build(temp_project_dir)
@@ -284,7 +313,7 @@ def run() -> None:
                 results = perform_benchmark_runs(
                     bench_id=bench_id,
                     bench_config=bench_cfg,
-                    entrypoint_name=ep,
+                    entrypoint_name=ep_runtime,
                     entrypoint_features=ep_feats,
                     artifact_path=artifact,
                     program_id=program_id,

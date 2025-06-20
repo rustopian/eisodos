@@ -60,6 +60,16 @@ DENORMALIZE_FROM_BREAKOUT = {
         r"\bsolana_entrypoint::ProgramResult": "solana_program_error::ProgramResult",
         # solana_pubkey, solana_program_error, solana_msg stay as-is
     },
+
+    "pinocchio-std": {
+        # Same mappings as "pinocchio" but without log path changes; identical rewrite suffices
+        r"\bsolana_account_info::":      "pinocchio::account_info::",
+        r"\bsolana_pubkey::":            "pinocchio::pubkey::",
+        r"\bsolana_program_error::":     "pinocchio::program_error::",
+        r"\bsolana_entrypoint::":        "pinocchio::",
+        r"\bsolana_msg::":               "pinocchio::log::",
+        r"\bsolana_instruction::":       "pinocchio::instruction::",
+    },
 }
 
 ENTRYPOINT_DEPS = {
@@ -76,15 +86,15 @@ solana-msg = { version = "^2.2", default-features = false }""",
     "solana-nostd-entrypoint": """solana-nostd-entrypoint = { version = "0.6", default-features = false }
 solana-program-error = { version = "^2.2", default-features = false }
 solana-pubkey = { version = "^2.2", default-features = false }""",
+
+    "pinocchio-std": """pinocchio = { workspace = true, default-features = false, features = ["std"] }""",
 }
 
 BENCHED_CRATE_DEPS = {
     "pinocchio": {
         "pinocchio": {
-            "version": "0.8",
-            "git": "https://github.com/rustopian/pinocchio.git",
-            "branch": "rustopian/slot-hashes-sysvar",
-            "default-features": False,
+            "workspace": True,
+            "default-features": False
         }
     },
     "solana-program": {
@@ -155,6 +165,15 @@ BENCHED_CRATE_DEPS = {
             "default-features": False,
         },
     },
+    "pinocchio-std": {
+        "pinocchio": {
+            "version": "0.8",
+            "git": "https://github.com/rustopian/pinocchio.git",
+            "branch": "rustopian/slot-hashes-sysvar",
+            "default-features": False,
+            "features": ["std"],
+        }
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -177,6 +196,7 @@ IDENTIFIER_MAPPINGS = {
         "no_allocator": "pinocchio::no_allocator",
         "nostd_panic_handler": "pinocchio::nostd_panic_handler",
         "invoke_signed_unchecked": "pinocchio::program::invoke_signed_unchecked",
+        "SlotHashes": "pinocchio::sysvars::slot_hashes::SlotHashes",
     },
 
     "solana-program": {
@@ -230,4 +250,21 @@ IDENTIFIER_MAPPINGS = {
         "Account": "solana_nostd_entrypoint::NoStdAccountInfo",
         "invoke_signed_unchecked": "solana_cpi::invoke_signed",
     },
+
+    "pinocchio-std": {
+        "ProgramResult": "pinocchio::ProgramResult",
+        "AccountInfo": "pinocchio::account_info::AccountInfo",
+        "Pubkey": "pinocchio::pubkey::Pubkey",
+        "ProgramError": "pinocchio::program_error::ProgramError",
+        "AccountMeta": "pinocchio::instruction::AccountMeta",
+        "Instruction": "pinocchio::instruction::Instruction",
+        "invoke": "pinocchio::program::invoke",
+        "invoke_signed": "pinocchio::program::invoke_signed",
+        "sol_log": "pinocchio::log::sol_log",
+        "msg": "pinocchio::msg",
+        "CpiAccount": "pinocchio::instruction::Account",
+        "Account": "pinocchio::account_info::AccountInfo",
+        "invoke_signed_unchecked": "pinocchio::program::invoke_signed_unchecked",
+        "SlotHashes": "pinocchio::sysvars::slot_hashes::SlotHashes",
+    }
 } 

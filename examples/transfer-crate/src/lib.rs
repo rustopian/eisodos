@@ -1,16 +1,22 @@
+#![cfg_attr(not(feature = "host"), no_std)]
+
+#[cfg(not(feature = "host"))]
+use pinocchio::{no_allocator, nostd_panic_handler};
+
+#[cfg(not(feature = "host"))]
+no_allocator!();
+
+#[cfg(not(feature = "host"))]
+nostd_panic_handler!();
+
 use pinocchio::{
     ProgramResult,
-    no_allocator,
-    nostd_panic_handler,
     pubkey::Pubkey,
     account_info::AccountInfo,
     instruction::{Instruction, AccountMeta, Account as CpiAccount},
     cpi::invoke_signed_unchecked,
     program_error::ProgramError,
 };
-
-no_allocator!();
-nostd_panic_handler!();
 
 // Define a simple instruction structure for this crate
 // byte 0: instruction_tag (0 for Transfer)

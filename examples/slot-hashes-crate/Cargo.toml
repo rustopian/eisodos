@@ -9,5 +9,11 @@ publish = false
 [lib]
 crate-type = ["cdylib", "lib"] # Keep existing types
 
+[features]
+default = []                      # on-chain build has no extra features
+std = []                          # enables alloc & host conveniences
+no_std = []                       # explicit marker for Pinocchio CU benches
+host = ["std", "pinocchio/std"]   # host-side tests/benches (std, Vec, println!)
+
 [dependencies]
 pinocchio = { version = "0.8", git = "https://github.com/rustopian/pinocchio.git", branch = "rustopian/slot-hashes-sysvar" }

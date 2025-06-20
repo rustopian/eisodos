@@ -240,4 +240,58 @@ entrypoints = ["solana-nostd-entrypoint"]
 features = [
     { entrypoint = "solana-nostd-entrypoint", features = ["solana-nostd-mono"] }
 ]
-instruction_payload = { tag = 11 } 
+instruction_payload = { tag = 11 }
+
+[[benchmark]]
+id = "slot_hashes_fetch_std"
+function = "slot_hashes_crate::instruction::process_instruction"
+entrypoints = ["solana-program", "solana-program-mono"]
+features = [
+    { entrypoint = "solana-program", features = ["solana-program"] },
+    { entrypoint = "solana-program-mono", features = ["solana-program-mono"] }
+]
+instruction_payload = { tag = 12 }
+
+[[benchmark]]
+id = "slot_hashes_fetch_into"
+function = "slot_hashes_crate::instruction::process_instruction"
+entrypoints = ["solana-program", "solana-program-mono"]
+features = [
+    { entrypoint = "solana-program", features = ["solana-program"] },
+    { entrypoint = "solana-program-mono", features = ["solana-program-mono"] }
+]
+instruction_payload = { tag = 13 }
+
+[[benchmark]]
+id = "slot_hashes_fetch_into_unchecked"
+function = "slot_hashes_crate::instruction::process_instruction"
+entrypoints = ["solana-program", "solana-program-mono"]
+features = [
+    { entrypoint = "solana-program", features = ["solana-program"] },
+    { entrypoint = "solana-program-mono", features = ["solana-program-mono"] }
+]
+instruction_payload = { tag = 14 }
+
+[[benchmark]]
+id = "slot_hashes_entries_slice_repeat"
+function = "slot_hashes_crate::instruction::process_instruction"
+entrypoints = ["pinocchio", "solana-program", "solana-program-mono", "solana-nostd-entrypoint"]
+features = [
+    { entrypoint = "pinocchio", features = ["no_std"] },
+    { entrypoint = "solana-program", features = ["solana-program"] },
+    { entrypoint = "solana-program-mono", features = ["solana-program-mono"] },
+    { entrypoint = "solana-nostd-entrypoint", features = ["solana-nostd-mono"] }
+]
+instruction_payload = { tag = 15 }
+
+[[benchmark]]
+id = "slot_hashes_entries_slice_blackbox"
+function = "slot_hashes_crate::instruction::process_instruction"
+entrypoints = ["pinocchio", "solana-program", "solana-program-mono", "solana-nostd-entrypoint"]
+features = [
+    { entrypoint = "pinocchio", features = ["no_std"] },
+    { entrypoint = "solana-program", features = ["solana-program"] },
+    { entrypoint = "solana-program-mono", features = ["solana-program-mono"] },
+    { entrypoint = "solana-nostd-entrypoint", features = ["solana-nostd-mono"] }
+]
+instruction_payload = { tag = 16 } 
